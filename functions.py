@@ -1,6 +1,6 @@
 import pandas as pd
 import requests
-import datetime as dt
+from datetime import datetime, timedelta
 import json
 import sqlite3
 import time
@@ -54,7 +54,7 @@ def Insert_Team(id_league, season):
         except:
             pass
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Atualização de times concluída...'
     print(info)
     return ()
@@ -102,7 +102,7 @@ def Update_Match(id_league, season, data_final = ''):
     # ----------------------------------------------------------------
 
     # APENAS INSERE JOGOS REALIZADOS A PARTIR DO DIA SEGUINTE DO ÚLTIMO DADO DA BASE, ATÉ O DIA DE HOJE
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Buscando jogos da {nome} {pais} {season} entre {data_inicial} e {data_final}'
     print(info)
 
@@ -159,7 +159,7 @@ def Update_Match(id_league, season, data_final = ''):
                      f"'{referee}')"
 
             try:
-                agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 info = f'[{agora}][INFO] Inserindo jogo {id_fixture} | {date} | {name_home_team} {home_goals} X {away_goals} {name_away_team}'
                 print(info)
 
@@ -168,7 +168,7 @@ def Update_Match(id_league, season, data_final = ''):
             except:
                 pass
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Atualização de jogos concluída...'
     print(info)
 
@@ -321,11 +321,11 @@ def Insert_Statistics(id_fixture):
             cursor.execute(string_away)
             conn.commit()
         except:
-            agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             info = f'[{agora}][ERRO] ERRO ao inserir os dados do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
             print(info)
 
-        agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         info = f'[{agora}][INFO] Inserindo dados do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
         print(info)
 
@@ -337,7 +337,7 @@ def Insert_Statistics(id_fixture):
             time.sleep(10)
             Insert_Statistics(id_fixture)
         else:
-            agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             info = f'[{agora}][ERRO] ERRO ao inserir os dados do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
             print(info)
 
@@ -351,7 +351,7 @@ def Update_Statistics(id_league, season):
     pais = busca.iloc[0, 1]
     # ----------------------------------------------------------------
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Buscando estatísticas dos jogos da {nome} {pais} {season}...'
     print(info)
 
@@ -366,7 +366,7 @@ def Update_Statistics(id_league, season):
         if id not in cad_statistics:
             Insert_Statistics(id)
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Atualização de estatísticas concluída...'
     print(info)
 
@@ -413,11 +413,11 @@ def Insert_Events(id_fixture):
                 cursor.execute(string)
                 conn.commit()
             except:
-                agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 info = f'[{agora}][ERRO] ERRO ao inserir os EVENTOS do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
                 print(info)
 
-        agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         info = f'[{agora}][INFO] Inserindo eventos do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
         print(info)
 
@@ -429,7 +429,7 @@ def Insert_Events(id_fixture):
             time.sleep(10)
             Insert_Events(id_fixture)
         else:
-            agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             info = f'[{agora}][ERRO] ERRO ao inserir os EVENTOS do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
             print(info)
 
@@ -443,7 +443,7 @@ def Update_Events(id_league, season):
     pais = busca.iloc[0, 1]
     # ----------------------------------------------------------------
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Buscando eventos dos jogos da {nome} {pais} {season}...'
     print(info)
 
@@ -458,7 +458,7 @@ def Update_Events(id_league, season):
         if id not in cad_events:
             Insert_Events(id)
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Atualização de eventos concluída...'
     print(info)
 
@@ -552,7 +552,7 @@ def Insert_PlayerStatistics(id_fixture):
                     #    info = f'[{agora}][ERRO] ERRO ao inserir as ESTATÍSTICAS DOS JOGADORES do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
                     #    print(info)
 
-        agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         info = f'[{agora}][INFO] Inserindo estatísticas dos jogadores do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
         print(info)
 
@@ -564,7 +564,7 @@ def Insert_PlayerStatistics(id_fixture):
             time.sleep(10)
             Insert_PlayerStatistics(id_fixture)
         else:
-            agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             info = f'[{agora}][ERRO] ERRO ao inserir as ESTATÍSTICAS DOS JOGADORES do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
             print(info)
 
@@ -578,7 +578,7 @@ def Update_PlayerStatistics(id_league, season):
     pais = busca.iloc[0, 1]
     # ----------------------------------------------------------------
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Buscando estatísticas dos jogadores dos jogos da {nome} {pais} {season}...'
     print(info)
 
@@ -593,19 +593,17 @@ def Update_PlayerStatistics(id_league, season):
         if id not in cad_statistics:
             Insert_PlayerStatistics(id)
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Atualização de estatísticas de jogadores concluída...'
     print(info)
 
-
-id_league = 71
-season = 2022
-
-# ROTINA DE ATUALIZACAO
-Update_Match(id_league, season, '2022-08-23')
-print("-----------------------------------------------------------------------")
-Update_Statistics(id_league, season)
-print("-----------------------------------------------------------------------")
-Update_Events(id_league, season)
-print("-----------------------------------------------------------------------")
-Update_PlayerStatistics(id_league, season)
+def Update_All(id_league, season):
+    data = datetime.strftime(datetime.today() - timedelta(1), '%Y-%m-%d')
+    # ROTINA DE ATUALIZACAO
+    Update_Match(id_league, season, data)
+    print("-----------------------------------------------------------------------")
+    Update_Statistics(id_league, season)
+    print("-----------------------------------------------------------------------")
+    Update_Events(id_league, season)
+    print("-----------------------------------------------------------------------")
+    Update_PlayerStatistics(id_league, season)
