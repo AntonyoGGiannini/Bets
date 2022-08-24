@@ -16,7 +16,7 @@ def Insert_Team(id_league, season):
     nome = busca.iloc[0, 0]
     pais = busca.iloc[0, 1]
 
-    agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = f'[{agora}][INFO] Buscando times da {nome} {pais} {season}...'
     print(info)
 
@@ -45,7 +45,7 @@ def Insert_Team(id_league, season):
                  f"'{code}', '{country}')"
 
         try:
-            agora = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             info = f'[{agora}][INFO] Inserindo time {team}...'
             print(info)
 
@@ -84,11 +84,11 @@ def Update_Match(id_league, season, data_final = ''):
         data_inicial = '1900-01-01'
     else:
         data_inicial = busca_data_inicial['DATE'][0]
-        data_inicial = dt.datetime.strptime(data_inicial, '%Y-%m-%d') + dt.timedelta(days=1)
-        data_inicial = dt.datetime.strftime(data_inicial, '%Y-%m-%d')
+        data_inicial = datetime.strptime(data_inicial, '%Y-%m-%d') + timedelta(days=1)
+        data_inicial = datetime.strftime(data_inicial, '%Y-%m-%d')
 
     if data_final == '':
-        data_final = dt.datetime.strftime(dt.datetime.today(), '%Y-%m-%d')
+        data_final = datetime.strftime(datetime.today(), '%Y-%m-%d')
 
     # ----------------------------------------------------
 
