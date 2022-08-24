@@ -1,0 +1,25 @@
+league_id = 1396 (Brasileirao 2020)
+time_zone = "America/Sao_Paulo"
+
+fixture_id = 328177
+team_id = 121
+
+
+#https://rapidapi.com/api-sports/api/api-football?endpoint=apiendpoint_d46a7438-cb61-46c0-9f0d-fdafc86afdb7
+
+#EXEMPLO
+
+import requests
+
+url = "https://api-football-v1.p.rapidapi.com/v2/fixtures/team/121"
+
+querystring = {"timezone":"America/Sao_Paulo"}
+
+headers = {
+    'x-rapidapi-key': "856f12b018mshe79a583bf00cd5bp1cd869jsnf7faf4fb1444",
+    'x-rapidapi-host': "api-football-v1.p.rapidapi.com"
+    }
+
+response = requests.request("GET", url, headers=headers, params=querystring)
+
+print(response.text)

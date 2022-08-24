@@ -1,0 +1,31 @@
+ATUALIZAÇÃO DA BASE
+1 - atualizar_jogos.py -> colocar data D-1 para não pegar jogos interminados.
+2 - buscar_eventos.py
+3 - atualizar_estatisticas.py
+
+
+INSERT MATCH
+- 
+
+
+
+
+
+def Insert_Statistics():
+    # Verificar partidas já inseridas e que não possuem estatísticas
+    string = "SELECT * FROM CAD_FIXTURE"
+    dados_fix = pd.read_sql_query(string, conn)
+    dados_fixtures = list(dados_fix['ID_FIXTURE'])
+
+    string = "SELECT * FROM CAD_STATISTICS"
+    dados_stat = pd.read_sql_query(string, conn)
+    dados_statistics = list(dados_stat['ID_FIXTURE'])
+
+    for i in range(0, len(dados_fixtures)):
+        if dados_fixtures[i] in dados_statistics:
+            # JÁ INSERIDO
+            pass
+        else:
+            Get_Statistics(dados_fixtures[i])
+
+    return('Inserido')
