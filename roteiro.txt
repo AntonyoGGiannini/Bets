@@ -3,6 +3,7 @@ ATUALIZAÇÃO DA BASE
 2 - buscar_eventos.py
 3 - atualizar_estatisticas.py
 
+teste
 
 INSERT MATCH
 - 
