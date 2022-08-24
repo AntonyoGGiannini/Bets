@@ -3,7 +3,6 @@ import requests
 from datetime import datetime, timedelta
 import json
 import sqlite3
-import time
 
 conn = sqlite3.connect("db_sports.sqlite")
 cursor = conn.cursor()
@@ -83,9 +82,7 @@ def Update_Match(id_league, season, data_final = ''):
     if len(busca_data_inicial) == 0:
         data_inicial = '1900-01-01'
     else:
-        data_inicial = busca_data_inicial['DATE'][0]
-        data_inicial = datetime.strptime(data_inicial, '%Y-%m-%d') + timedelta(days=1)
-        data_inicial = datetime.strftime(data_inicial, '%Y-%m-%d')
+        data_inicial = datetime.strftime(datetime.strptime(busca_data_inicial['DATE'][0], '%Y-%m-%d') + timedelta(days=1), '%Y-%m-%d')
 
     if data_final == '':
         data_final = datetime.strftime(datetime.today(), '%Y-%m-%d')
@@ -130,9 +127,9 @@ def Update_Match(id_league, season, data_final = ''):
             id_fixture = item['fixture']['id']
             referee = item['fixture']['referee']
             timezone = item['fixture']['timezone']
-            datetime = item['fixture']['date']
-            date = datetime.split('T')[0]
-            time = datetime.split('T')[1].split('+')[0]
+            datet = item['fixture']['date']
+            date = datet.split('T')[0]
+            time = datet.split('T')[1].split('+')[0]
             id_venue = item['fixture']['venue']['id']
             name_venue = item['fixture']['venue']['name']
             city_venue = item['fixture']['venue']['city']
