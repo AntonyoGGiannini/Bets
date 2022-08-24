@@ -5,7 +5,7 @@ import json
 import sqlite3
 import time
 
-conn = sqlite3.connect("/home/agiannini/Projetos/sports/@database/SPORTS.sqlite")
+conn = sqlite3.connect("db_sports.sqlite")
 cursor = conn.cursor()
 
 def Insert_Team(id_league, season):
