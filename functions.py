@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import json
+import time
 import sqlite3
 
 conn = sqlite3.connect("db_sports.sqlite")
@@ -594,6 +595,84 @@ def Update_PlayerStatistics(id_league, season):
     info = f'[{agora}][INFO] Atualização de estatísticas de jogadores concluída...'
     print(info)
 
+def Insert_Formation(id_fixture):
+    string_sql_name = f"SELECT * FROM CAD_FIXTURE WHERE ID_FIXTURE = {id_fixture}"
+    dados = pd.read_sql_query(string_sql_name, conn).reset_index().drop('index', axis=1)
+    nome, pais = Get_LeagueName(dados.iloc[0, 2])
+    season = dados.iloc[0, 3]
+    home_team, home_code = Get_TeamName(dados.iloc[0, 9])
+    away_team, away_code = Get_TeamName(dados.iloc[0, 10])
+    data = dados.iloc[0, 5]
+
+    url = "https://api-football-v1.p.rapidapi.com/v3/fixtures/lineups"
+
+    querystring = {"fixture":f"{id_fixture}"}
+
+    headers = {
+        "X-RapidAPI-Key": "856f12b018mshe79a583bf00cd5bp1cd869jsnf7faf4fb1444",
+        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+    }
+
+    response = requests.request("GET", url, headers=headers, params=querystring)
+
+    try:
+        response = response.text
+        dados = json.loads(response)
+        dados = dados['response']
+
+        for item in dados:
+            formation = item['formation']
+            team = item['team']['id']
+
+            string = f"INSERT INTO CAD_FORMATION (ID_FIXTURE, ID_TEAM, FORMATION) VALUES ('{id_fixture}', '{team}', '{formation}')"
+            cursor.execute(string)
+            conn.commit()
+
+            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            info = f'[{agora}][INFO] Inserindo formações do jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
+            print(info)
+            team = None
+            formation = None
+
+    except:
+        if dados['message'] == 'You have exceeded the rate limit per minute for your plan, BASIC, by the API provider':
+            print('----------------------------------------------------------')
+            print('---------- LIMITE DE BUSCAS POR MINUTO EXCEDIDO ----------')
+            print('----------------------------------------------------------')
+            time.sleep(10)
+            Insert_Formation(id_fixture)
+        else:
+            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            info = f'[{agora}][ERRO] ERRO ao inserir a FORMAÇÃO DO jogo {id_fixture} | {data} | {home_team} x {away_team} | {nome} {int(season)} | {pais}...'
+            print(info)
+
+def Update_Formation(id_league, season):
+    string_sql_name = f"SELECT LEAGUE_NAME, COUNTRY FROM CAD_LEAGUE WHERE LEAGUE_ID = {id_league}"
+    busca = pd.read_sql_query(string_sql_name, conn)
+
+    nome = busca.iloc[0, 0]
+    pais = busca.iloc[0, 1]
+    # ----------------------------------------------------------------
+
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    info = f'[{agora}][INFO] Buscando formações dos jogos da {nome} {pais} {season}...'
+    print(info)
+
+    # Verificar partidas já inseridas e que não possuem eventos
+    string_sql = "SELECT DISTINCT ID_FIXTURE FROM CAD_FORMATION"
+    cad_formation = list(pd.read_sql_query(string_sql, conn)['ID_FIXTURE'])
+
+    string_sql = f"SELECT ID_FIXTURE FROM CAD_FIXTURE WHERE ID_LEAGUE = {id_league} AND SEASON = {season}"
+    cad_fixtures = list(pd.read_sql_query(string_sql, conn)['ID_FIXTURE'])
+
+    for id in cad_fixtures:
+        if id not in cad_formation:
+            Insert_Formation(id)
+
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    info = f'[{agora}][INFO] Atualização de formação dos jogos concluída...'
+    print(info)
+
 def Update_All(id_league, season):
     data = datetime.strftime(datetime.today() - timedelta(1), '%Y-%m-%d')
     # ROTINA DE ATUALIZACAO
@@ -604,3 +683,6 @@ def Update_All(id_league, season):
     Update_Events(id_league, season)
     print("-----------------------------------------------------------------------")
     Update_PlayerStatistics(id_league, season)
+    print("-----------------------------------------------------------------------")
+    Update_Formation(id_league, season)
+    print("-----------------------------------------------------------------------")

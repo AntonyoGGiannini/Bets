@@ -1,6 +1,5 @@
 import functions as ft
 
-
 id_league = 71
 season = 2022
 
