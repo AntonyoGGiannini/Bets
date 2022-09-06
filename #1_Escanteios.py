@@ -43,6 +43,7 @@ print('     ')
 
 # BACKTEST
 #   IR JOGO A JOGO em 2022 e VER QUAL SERIA O ACERTO
+#
 
 mandante = 'RB Bragantino'
 visitante = 'Palmeiras'
