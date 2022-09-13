@@ -686,3 +686,24 @@ def Update_All(id_league, season):
     print("-----------------------------------------------------------------------")
     Update_Formation(id_league, season)
     print("-----------------------------------------------------------------------")
+
+def get_Odd_Next_Fixture():
+    url = "https://api-football-v1.p.rapidapi.com/v3/odds"
+
+    querystring = {"league":"71",
+                   "season":"2022",
+                   "date": "2022-09-17",
+                   "bookmaker":"8",
+                   "bet":"45"}
+
+    headers = {
+        "X-RapidAPI-Key": "856f12b018mshe79a583bf00cd5bp1cd869jsnf7faf4fb1444",
+        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+    }
+
+    response = requests.request("GET", url, headers=headers, params=querystring)
+    response = response.text
+    response = json.loads(response)['response']
+
+    for i in range(0, len(response)):
+        print(response[i]['fixture']['id'], response[i]['bookmakers'][0]['bets'][0]['values'])
