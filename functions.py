@@ -692,7 +692,7 @@ def get_Odd_Next_Fixture():
 
     querystring = {"league":"71",
                    "season":"2022",
-                   "date": "2022-09-17",
+                   "date": "2022-09-28",
                    "bookmaker":"8",
                    "bet":"45"}
 

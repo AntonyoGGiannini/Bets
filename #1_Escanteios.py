@@ -13,7 +13,7 @@ def warn(*args, **kwargs):
 import warnings
 warnings.warn = warn
 
-desired_width=320
+desired_width = 320
 pd.set_option('display.width', desired_width)
 np.set_printoptions(linewidth=desired_width)
 pd.set_option('display.max_columns', 10)
@@ -96,3 +96,6 @@ print('------------------------------------------------')
 total = len(dados['ID_FIXTURE'])
 print(f"Total: {total} | Ganhou: {g} | Perdeu: {p}")
 print(f"Assertividade: {round(100*g/total,2)}%")
+
+time_1 = 121
+time_2 = 121
