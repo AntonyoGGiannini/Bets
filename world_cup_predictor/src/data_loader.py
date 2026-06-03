@@ -250,3 +250,41 @@ def load_teams(path: Optional[str] = None) -> pd.DataFrame:
     if path and os.path.exists(path):
         return pd.read_csv(path)
     return pd.DataFrame({"time": list(MOCK_TEAMS.keys())})
+
+
+# ---------------------------------------------------------------------------
+# Loaders para fontes de dados reais (wrappers sobre data_fetcher).
+# ---------------------------------------------------------------------------
+def load_matches_kaggle(
+    path: str,
+    min_date: Optional[str] = "2000-01-01",
+    copa_teams_only: bool = False,
+) -> pd.DataFrame:
+    """Lê o CSV do Kaggle e normaliza para o formato do pipeline.
+
+    Atalho para ``data_fetcher.load_kaggle_results``.  Para mais opções
+    (filtro de data máxima, lista customizada de times) importe
+    ``data_fetcher`` diretamente.
+
+    Parameters
+    ----------
+    path:
+        Caminho para ``results.csv`` do dataset Kaggle.
+    min_date:
+        Filtra partidas a partir desta data (padrão: 2000-01-01 para evitar
+        dados muito antigos com qualidade variável).
+    copa_teams_only:
+        Se True, mantém só partidas entre seleções da Copa 2026.
+    """
+    from data_fetcher import load_kaggle_results
+    return load_kaggle_results(path, min_date=min_date, copa_teams_only=copa_teams_only)
+
+
+def load_odds_footballdata(path: str) -> pd.DataFrame:
+    """Lê um CSV do football-data.co.uk e normaliza para o formato do pipeline.
+
+    Atalho para ``data_fetcher.load_odds_footballdata``.
+    Colunas suportadas: B365H/D/A, PSH/D/A, AvgH/D/A ou MaxH/D/A.
+    """
+    from data_fetcher import load_odds_footballdata as _load
+    return _load(path)

@@ -13,6 +13,9 @@ plotly>=5.15
 # App de demonstração (opcional)
 streamlit>=1.30
 
+# Ingestão de dados reais via API / download
+requests>=2.31
+
 # Modelos avançados — V4 (opcional, ainda não usados)
 # xgboost>=2.0
 # lightgbm>=4.0
