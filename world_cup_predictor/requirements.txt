@@ -1,0 +1,18 @@
+# Núcleo numérico (obrigatório para a V1)
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+
+# Visualização e avaliação
+matplotlib>=3.7
+scikit-learn>=1.3
+
+# Visualização interativa (opcional)
+plotly>=5.15
+
+# App de demonstração (opcional)
+streamlit>=1.30
+
+# Modelos avançados — V4 (opcional, ainda não usados)
+# xgboost>=2.0
+# lightgbm>=4.0

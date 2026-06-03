@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Dados brutos grandes (manter a estrutura, ignorar conteúdo)
+data/raw/*.csv
+data/processed/*.csv
+
+# Saídas geradas (regeráveis via pipeline)
+outputs/*.csv
+
+# OS / editores
+.DS_Store
+.idea/
+.vscode/
