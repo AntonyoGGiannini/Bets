@@ -62,7 +62,7 @@ def run_pipeline(
 
     pred_rows = []
     sim_rows = []
-    for row in fixtures.itertuples(index=False):
+    for i, row in enumerate(fixtures.itertuples(index=False)):
         lambda_a, lambda_b = estimate_lambdas_for_fixture(
             row.time_a,
             row.time_b,
@@ -75,9 +75,10 @@ def run_pipeline(
         matrix = calculate_score_matrix(lambda_a, lambda_b, max_goals=max_goals)
         poisson_probs = probabilities_from_matrix(matrix)
 
-        # Verificação cruzada via Monte Carlo.
-        mc = simulate_match(lambda_a, lambda_b, n_simulations=n_simulations, seed=hash(
-            (row.time_a, row.time_b)) % (2**32))
+        # Verificação cruzada via Monte Carlo. Seed determinístico pelo índice
+        # do confronto — reprodutível entre processos (hash() de strings é
+        # salgado por processo e não serve como seed estável).
+        mc = simulate_match(lambda_a, lambda_b, n_simulations=n_simulations, seed=2000 + i)
 
         pred_rows.append({
             "data_jogo": row.data_jogo,

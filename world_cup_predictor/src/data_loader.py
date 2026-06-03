@@ -202,13 +202,15 @@ def generate_mock_odds(fixtures: pd.DataFrame, seed: int = 11) -> pd.DataFrame:
         p_draw = 0.27
         p_b = max(0.05, 1.0 - p_a - p_draw)
 
-        # Normaliza e aplica margem.
+        # Normaliza e aplica margem. odd = 1 / (p * margin) faz as
+        # probabilidades implícitas (1/odd) somarem ~margin (overround > 1),
+        # reproduzindo a margem da casa de ~5%.
         total = p_a + p_draw + p_b
         p_a, p_draw, p_b = p_a / total, p_draw / total, p_b / total
         margin = 1.05
-        odd_a = round(margin / max(p_a, 1e-6), 2)
-        odd_draw = round(margin / max(p_draw, 1e-6), 2)
-        odd_b = round(margin / max(p_b, 1e-6), 2)
+        odd_a = round(1.0 / (max(p_a, 1e-6) * margin), 2)
+        odd_draw = round(1.0 / (max(p_draw, 1e-6) * margin), 2)
+        odd_b = round(1.0 / (max(p_b, 1e-6) * margin), 2)
 
         rows.append(
             {
