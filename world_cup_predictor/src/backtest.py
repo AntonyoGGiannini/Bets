@@ -46,19 +46,28 @@ def run_backtest(
     n_history: int = 800,
     warmup: int = 200,
     n_recent_games: int = 10,
+    matches: pd.DataFrame | None = None,
 ) -> dict:
     """Executa o backtest walk-forward e devolve métricas + DataFrame de previsões.
 
     Parameters
     ----------
     n_history:
-        Número de partidas mock a gerar.
+        Número de partidas mock a gerar (ignorado se ``matches`` for fornecido).
     warmup:
         Partidas iniciais usadas só para aquecer o Elo (não avaliadas).
     n_recent_games:
         Janela de forma recente.
+    matches:
+        DataFrame de partidas já carregado (ex.: dados reais via
+        ``data_fetcher.load_kaggle_results``). Se None, gera dados mock.
+        Deve conter: data_jogo, time_a, time_b, gols_time_a, gols_time_b,
+        competicao.
     """
-    matches = data_loader.generate_mock_matches(n_matches=n_history)
+    if matches is None:
+        matches = data_loader.generate_mock_matches(n_matches=n_history)
+    else:
+        matches = matches.sort_values("data_jogo").reset_index(drop=True)
     teams = set(matches["time_a"]).union(matches["time_b"])
     ratings = initialize_elo(teams)
 
@@ -159,9 +168,9 @@ def _evaluate(preds: pd.DataFrame) -> dict:
     }
 
 
-def _print_report(result: dict) -> None:
+def _print_report(result: dict, fonte: str = "dados mock") -> None:
     m = result["metrics"]
-    print("\n=== BACKTEST WALK-FORWARD (dados mock) ===")
+    print(f"\n=== BACKTEST WALK-FORWARD ({fonte}) ===")
     print(f"Jogos avaliados:        {m['n_jogos_avaliados']}")
     print(f"Brier  modelo:          {m['brier_modelo']}   (baseline 33/33/33: {m['brier_baseline_33']})")
     print(f"LogLoss modelo:         {m['logloss_modelo']}   (baseline 33/33/33: {m['logloss_baseline_33']})")
@@ -179,8 +188,18 @@ def _print_report(result: dict) -> None:
 
 
 if __name__ == "__main__":
-    res = run_backtest()
-    _print_report(res)
+    import sys
+
+    # Uso: python src/backtest.py [caminho_para_results.csv]
+    real_path = sys.argv[1] if len(sys.argv) > 1 else None
+    if real_path:
+        from data_fetcher import load_kaggle_results, filter_copa_teams
+        matches = filter_copa_teams(load_kaggle_results(real_path, min_date="2000-01-01"))
+        res = run_backtest(matches=matches, warmup=200)
+        _print_report(res, fonte="dados reais — seleções Copa 2026")
+    else:
+        res = run_backtest()
+        _print_report(res)
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
     res["predictions"].to_csv(os.path.join(OUTPUTS_DIR, "backtest_predictions.csv"), index=False)
     print("\nPrevisões do backtest salvas em outputs/backtest_predictions.csv")

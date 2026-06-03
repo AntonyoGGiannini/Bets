@@ -43,11 +43,27 @@ def run_pipeline(
     n_simulations: int = 10_000,
     max_goals: int = 6,
     write_outputs: bool = True,
+    real_data_path: str | None = None,
 ) -> dict:
-    """Executa a V1 completa e devolve os DataFrames produzidos."""
-    # 1. Dados históricos (mock) + confrontos futuros + odds.
-    matches = data_loader.generate_mock_matches(n_matches=n_history)
-    fixtures = data_loader.generate_mock_fixtures()
+    """Executa a V1 completa e devolve os DataFrames produzidos.
+
+    Parameters
+    ----------
+    real_data_path:
+        Caminho para o CSV real do Kaggle (``results.csv``). Se fornecido,
+        usa dados reais (seleções em inglês) em vez do histórico mock; as
+        fixtures também passam a usar nomes em inglês.
+    """
+    # 1. Dados históricos + confrontos futuros + odds.
+    if real_data_path:
+        from data_fetcher import load_kaggle_results, filter_copa_teams, generate_real_fixtures
+        matches = filter_copa_teams(
+            load_kaggle_results(real_data_path, min_date="2000-01-01")
+        )
+        fixtures = generate_real_fixtures()
+    else:
+        matches = data_loader.generate_mock_matches(n_matches=n_history)
+        fixtures = data_loader.generate_mock_fixtures()
     odds = data_loader.generate_mock_odds(fixtures)
 
     # 2. Elo a partir do histórico cronológico.
@@ -159,4 +175,13 @@ def _print_summary(result: dict) -> None:
 
 
 if __name__ == "__main__":
-    _print_summary(run_pipeline())
+    import sys
+
+    # Uso: python src/pipeline.py [caminho_para_results.csv]
+    # Com argumento → roda com dados reais; sem argumento → dados mock.
+    real_path = sys.argv[1] if len(sys.argv) > 1 else None
+    if real_path:
+        print(f"Rodando com DADOS REAIS: {real_path}")
+    else:
+        print("Rodando com DADOS MOCK (passe o caminho de results.csv para dados reais)")
+    _print_summary(run_pipeline(real_data_path=real_path))

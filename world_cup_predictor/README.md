@@ -98,11 +98,16 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 # 2. instalar dependências
 pip install -r requirements.txt
 
-# 3. rodar o pipeline V1 (gera os CSVs em outputs/)
+# 3. rodar o pipeline V1 com dados mock (gera os CSVs em outputs/)
 python src/pipeline.py
 
-# 4. rodar o backtest de calibração
+# 3b. (opcional) rodar com DADOS REAIS — baixe o CSV antes (ver seção abaixo)
+python src/pipeline.py data/raw/results.csv
+
+# 4. rodar o backtest de calibração (mock)
 python src/backtest.py
+#     ...ou com dados reais:
+python src/backtest.py data/raw/results.csv
 
 # 5. (opcional) app interativo
 streamlit run app/streamlit_app.py
@@ -127,10 +132,12 @@ Brasil x Alemanha  (Grupo)
   Placar provável: 1x0
 ```
 
-### Calibração (backtest walk-forward sobre os dados mock)
+### Calibração (backtest walk-forward)
 
 O backtest prevê cada jogo usando **apenas** a informação anterior a ele
-(sem vazamento), e só depois atualiza o Elo:
+(sem vazamento), e só depois atualiza o Elo.
+
+**Dados mock (600–800 partidas sintéticas):**
 
 ```
 Brier  modelo:   0.650   (baseline 33/33/33: 0.667)   ← menor é melhor
@@ -138,9 +145,23 @@ LogLoss modelo:  1.074   (baseline 33/33/33: 1.099)
 Erro de gols (MAE): ~0.91,  bias ≈ 0
 ```
 
-O modelo **bate o baseline** e fica bem calibrado (probabilidade prevista ≈
-frequência observada nas faixas). O ganho é modesto — o que é honesto:
-prever futebol internacional é genuinamente difícil.
+**Dados reais (4.257 partidas de seleções da Copa 2026, pós-2000):**
+
+```
+Brier  modelo:   0.616   (baseline 33/33/33: 0.667)   ← bate o baseline
+LogLoss modelo:  1.026   (baseline 33/33/33: 1.099)
+Erro de gols (MAE): ~0.93,  bias ≈ +0.05
+```
+
+Em ambos os casos o modelo **bate o baseline**. O ganho é modesto — o que é
+honesto: prever futebol internacional é genuinamente difícil.
+
+> **Achado nos dados reais:** a curva de calibração mostra o modelo
+> **subestimando o mandante** (quando prevê ~45% de vitória do time A, o
+> observado é ~54%). O `time_a` nos dados reais é o time da casa, e há uma
+> **vantagem de campo** que o Elo + forma recente não captura sozinho.
+> Adicionar um termo explícito de mando de campo (já presente como
+> `mando_neutro`) é o próximo passo de calibração — ver Roadmap V3.
 
 ---
 
@@ -239,8 +260,11 @@ bem-vindas — serão aproveitadas nas versões futuras.
   com dados mock e tabela de probabilidades. ✅
 - **V2 — Odds e edge:** importar odds, remover margem, calcular e classificar
   *edge*. ✅ (já incluído em `odds_analysis.py`)
-- **V3 — Calibração e backtest:** backtest em Copas/Euro/Eliminatórias, Brier,
-  Log Loss, calibração. 🟡 (semente em `backtest.py`)
+- **V3 — Dados reais, calibração e backtest:** ingestão de dados reais
+  (`data_fetcher.py`, ~48k partidas do Kaggle), backtest walk-forward em
+  Copas/Euro/Eliminatórias com Brier/Log Loss. ✅ (ingestão + backtest reais)
+  🟡 **Pendente:** termo explícito de **vantagem de campo** (o backtest real
+  mostrou subestimação do mandante) e odds reais via football-data.co.uk.
 - **V4 — Modelo avançado:** xG, escalações, lesões, valor de elenco,
   **Dixon-Coles**, XGBoost/LightGBM.
 

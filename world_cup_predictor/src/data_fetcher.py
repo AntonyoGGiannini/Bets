@@ -269,6 +269,36 @@ def load_odds_footballdata(path: str) -> pd.DataFrame:
     return result.dropna().reset_index(drop=True)
 
 
+def generate_real_fixtures() -> pd.DataFrame:
+    """Confrontos plausíveis da Copa 2026 com nomes EM INGLÊS.
+
+    Use esta função (em vez de ``data_loader.generate_mock_fixtures``, que usa
+    nomes em português) quando o histórico vier de dados reais do Kaggle, para
+    que os nomes das seleções batam com os ratings/forças construídos.
+    """
+    fixtures = [
+        ("Brazil", "Germany", "Grupo"),
+        ("Argentina", "France", "Grupo"),
+        ("England", "Spain", "Quartas"),
+        ("Portugal", "Netherlands", "Oitavas"),
+        ("Morocco", "Belgium", "Grupo"),
+        ("Mexico", "Japan", "Grupo"),
+        ("Croatia", "Uruguay", "Oitavas"),
+        ("United States", "Senegal", "Grupo"),
+    ]
+    base_date = pd.Timestamp("2026-06-11")
+    rows = []
+    for i, (a, b, phase) in enumerate(fixtures):
+        rows.append({
+            "data_jogo": base_date + pd.Timedelta(days=i),
+            "time_a": a,
+            "time_b": b,
+            "competicao": "World Cup",
+            "fase": phase,
+        })
+    return pd.DataFrame(rows)
+
+
 def filter_copa_teams(
     df: pd.DataFrame,
     teams: Optional[list[str]] = None,
