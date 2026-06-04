@@ -29,10 +29,13 @@ from scipy.stats import poisson
 # Média de gols por time em uma partida internacional típica (baseline).
 LEAGUE_AVG_GOALS = 1.35
 
-# Quanto a diferença de Elo "puxa" os lambdas. Calibrado por backtest
-# walk-forward (ver src/backtest.py): valores maiores deixam o modelo
-# overconfident. 0.0005 ~ fator e^0.20 ≈ 1.22 no ataque por 400 pts de Elo.
-ELO_SCALE = 0.0005
+# Quanto a diferença de Elo "puxa" os lambdas. Calibrado por grid search no
+# backtest walk-forward real (ver src/backtest.py): com 0.0005 o sinal de Elo
+# ficava fraco demais e quase todo jogo saía 1x1 (lambdas comprimidos perto de
+# 1.3). 0.0011 separa melhor favoritos/azarões — reduz os placares 1x1 de 67%
+# para ~49% dos jogos da Copa E melhora o Brier (0.6092 -> 0.6077). Acima disso
+# o modelo começa a ficar overconfident. 0.0011 ~ fator e^0.44 ≈ 1.55 por 400 pts.
+ELO_SCALE = 0.0011
 
 # Encolhimento (shrinkage) das razões de forma recente em direção a 1.0.
 # Com apenas ~10 jogos a forma é ruidosa; puxá-la para a média evita
@@ -47,9 +50,10 @@ KNOCKOUT_GOAL_DAMPING = 0.92
 # como independentes e, por isso, SUBESTIMA empates (0-0, 1-1) — confirmado no
 # backtest walk-forward: empate previsto 23.7% vs. observado 25.7%. O fator
 # tau de Dixon-Coles ajusta as quatro células de baixa pontuação. rho < 0
-# aumenta 0-0/1-1 e reduz 1-0/0-1. Calibrado por grid search no backtest real
-# (mínimo de Brier + empate previsto ≈ observado): rho = -0.08.
-DIXON_COLES_RHO = -0.08
+# aumenta 0-0/1-1 e reduz 1-0/0-1. Re-calibrado por grid search após o aumento
+# do ELO_SCALE (que reduz empates): rho = -0.12 mantém empate previsto ≈ 0.251
+# (observado 0.257) com Brier 0.6077.
+DIXON_COLES_RHO = -0.12
 
 # Vantagem de campo: aplicada APENAS quando o time_a joga em casa
 # (``mando_neutro == 0``). Em campo neutro — como a maioria dos jogos da Copa
@@ -232,6 +236,15 @@ def probabilities_from_matrix(matrix: np.ndarray) -> Dict[str, float]:
     best = np.unravel_index(np.argmax(matrix), matrix.shape)
     placar = f"{best[0]}x{best[1]}"
 
+    # Top-3 placares mais prováveis com suas probabilidades. O placar modal
+    # costuma ter só ~12% — mostrar o top-3 evita a impressão de que "1x1" é
+    # quase certo quando na verdade os 3 placares mais prováveis estão lado a lado.
+    flat = np.argsort(matrix, axis=None)[::-1][:3]
+    top3 = []
+    for f in flat:
+        i, j = np.unravel_index(f, matrix.shape)
+        top3.append((f"{i}x{j}", float(matrix[i, j])))
+
     return {
         "prob_vitoria_time_a": float(p_home),
         "prob_empate": float(p_draw),
@@ -242,4 +255,5 @@ def probabilities_from_matrix(matrix: np.ndarray) -> Dict[str, float]:
         "prob_under_2_5": float(p_under_25),
         "prob_ambos_marcam": float(p_btts),
         "placar_mais_provavel": placar,
+        "top3_placares": top3,
     }
