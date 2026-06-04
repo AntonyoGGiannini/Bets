@@ -286,7 +286,7 @@ bem-vindas — serão aproveitadas nas versões futuras.
 - **Poucos jogos / alta variância.** Seleções jogam pouco; risco de overfitting
   é alto. A forma recente é encolhida justamente por isso.
 - **Correlação de gols.** A Poisson simples ignora a correlação em placares
-  baixos (0x0, 1x1). Aplicamos a correção **Dixon-Coles** (`rho = -0.08`) que
+  baixos (0x0, 1x1). Aplicamos a correção **Dixon-Coles** (`rho = -0.12`) que
   recalibra os empates; uma versão completa estimaria `rho` junto com os λ (V4).
 - **Amistosos valem menos** que jogos oficiais; o modelo pondera por competição,
   mas a heurística é simples.
