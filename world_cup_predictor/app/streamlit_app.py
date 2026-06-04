@@ -222,6 +222,20 @@ def _tab_prediction(teams, ratings, strengths):
 
     # Matriz de placares
     st.subheader("Matriz de placares (%)")
+    with st.expander("❓ Como interpretar a matriz de placares"):
+        st.markdown(
+            "**O que é:** cada célula mostra a probabilidade (%) de um placar exato. "
+            "A **linha** representa gols do Time A e a **coluna** gols do Time B.\n\n"
+            "**Como ler:** a célula `Time A 1g / Time B 0g` = probabilidade do placar 1×0. "
+            "Cores mais escuras indicam maior probabilidade.\n\n"
+            "**Soma das regiões:**\n"
+            "- Células onde linha > coluna → prob. de vitória do Time A\n"
+            "- Diagonal principal → prob. de empate (0×0, 1×1, 2×2 …)\n"
+            "- Células onde coluna > linha → prob. de vitória do Time B\n\n"
+            "**Como usar:** mercados de placar exato em casas de apostas costumam pagar "
+            "odds altas — a matriz ajuda a identificar quais placares têm probabilidade "
+            "acima da implícita na odd oferecida."
+        )
     n = matrix.shape[0]
     mdf = pd.DataFrame(
         np.round(matrix * 100, 1),
@@ -243,6 +257,23 @@ def _tab_odds(teams, ratings, strengths):
 
     st.subheader("Comparação modelo × mercado")
     st.caption("Insira as odds decimais de uma casa para calcular o *edge* do modelo.")
+    with st.expander("❓ O que é a comparação modelo × mercado?"):
+        st.markdown(
+            "**O que é:** compara as probabilidades geradas pelo modelo com as probabilidades implícitas "
+            "nas odds da casa de apostas — após remover a margem da casa.\n\n"
+            "**Edge (vantagem):** `edge = prob_modelo − prob_implícita_mercado`\n"
+            "- **Positivo** → o modelo acredita que o resultado é *mais provável* do que a casa sugere "
+            "→ a odd está 'grande' em relação à nossa estimativa.\n"
+            "- **Negativo** → modelo mais pessimista que o mercado.\n"
+            "- **Próximo de zero** → modelo e mercado concordam.\n\n"
+            "**Margem da casa (overround):** toda casa cobra uma comissão inflando as probabilidades "
+            "implícitas acima de 100%. Removemos essa margem antes de comparar, para a comparação "
+            "ser justa.\n\n"
+            "**Atenção — edge ≠ recomendação de aposta.** Considere:\n"
+            "- A incerteza do modelo (poucos jogos internacionais por seleção)\n"
+            "- Se o mercado tem informações que o modelo não tem (lesões, escalações, clima)\n"
+            "- Liquidez e limites de aposta da casa"
+        )
 
     col1, col2 = st.columns(2)
     with col1:
@@ -308,6 +339,24 @@ def _tab_odds(teams, ratings, strengths):
 # ---------------------------------------------------------------------------
 def _tab_ranking(teams, ratings, strengths):
     st.subheader("Ranking Elo — Copa 2026 (48 seleções)")
+    with st.expander("❓ O que é o rating Elo?"):
+        st.markdown(
+            "**O que é:** Elo é um sistema de pontuação que mede a força relativa de cada seleção "
+            "com base no histórico completo de resultados (vitórias, empates, derrotas e gols).\n\n"
+            "**Como funciona:**\n"
+            "- Toda seleção começa com **1500 pontos**.\n"
+            "- Ao vencer, rouba pontos do adversário; ao perder, cede pontos.\n"
+            "- A quantidade transferida depende do resultado esperado: uma vitória surpresa "
+            "contra um time muito mais forte vale mais pontos do que uma vitória previsível.\n"
+            "- Jogos mais importantes (Copa do Mundo, Eliminatórias) têm fator K maior — "
+            "o Elo muda mais rápido após partidas decisivas do que após amistosos.\n\n"
+            "**Como usar neste app:**\n"
+            "- Elo mais alto → seleção historicamente mais forte.\n"
+            "- A **diferença de Elo** ajusta os gols esperados (λ) no modelo: times melhores "
+            "têm λ levemente maior.\n"
+            "- Uma diferença de ~100 pts ≈ 65% de chance de vitória para o favorito "
+            "(em campo neutro, sem outros ajustes)."
+        )
 
     rows = []
     for group, group_teams in COPA_2026_GROUPS.items():
