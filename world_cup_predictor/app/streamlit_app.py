@@ -276,8 +276,9 @@ def _tab_prediction(teams, ratings, strengths):
     )
     st.dataframe(mdf.style.background_gradient(cmap="Blues"), use_container_width=True)
 
-    st.caption("Delta MC vs Poisson < 1pp confirma consistência do modelo. "
-               "Campo neutro para quase todos os jogos da Copa — exceto anfitriões.")
+    st.caption("O Monte Carlo sorteia gols independentes (sem Dixon-Coles), então uma "
+               "pequena diferença no empate vs. Poisson é esperada — é o efeito da correção "
+               "de empates. Campo neutro para quase todos os jogos da Copa — exceto anfitriões.")
 
 
 # ---------------------------------------------------------------------------

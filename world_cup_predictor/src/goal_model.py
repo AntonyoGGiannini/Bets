@@ -43,6 +43,14 @@ FORM_SHRINKAGE = 0.35
 # Em jogos de mata-mata o futebol tende a ser mais conservador (seção 17.3).
 KNOCKOUT_GOAL_DAMPING = 0.92
 
+# Correção Dixon-Coles para placares baixos. A Poisson simples trata os gols
+# como independentes e, por isso, SUBESTIMA empates (0-0, 1-1) — confirmado no
+# backtest walk-forward: empate previsto 23.7% vs. observado 25.7%. O fator
+# tau de Dixon-Coles ajusta as quatro células de baixa pontuação. rho < 0
+# aumenta 0-0/1-1 e reduz 1-0/0-1. Calibrado por grid search no backtest real
+# (mínimo de Brier + empate previsto ≈ observado): rho = -0.08.
+DIXON_COLES_RHO = -0.08
+
 # Vantagem de campo: aplicada APENAS quando o time_a joga em casa
 # (``mando_neutro == 0``). Em campo neutro — como a maioria dos jogos da Copa
 # do Mundo — nenhum ajuste é feito. Calibrado pelo backtest walk-forward em
@@ -151,13 +159,22 @@ def estimate_lambdas_for_fixture(
     return estimate_lambdas(features, league_avg_goals)
 
 
-def calculate_score_matrix(lambda_a: float, lambda_b: float, max_goals: int = 6) -> np.ndarray:
-    """Matriz de probabilidades de placar via produto de Poissons independentes.
+def calculate_score_matrix(
+    lambda_a: float,
+    lambda_b: float,
+    max_goals: int = 6,
+    rho: float = DIXON_COLES_RHO,
+) -> np.ndarray:
+    """Matriz de probabilidades de placar via Poisson + correção Dixon-Coles.
 
     ``M[i, j]`` = P(time A faz i gols E time B faz j gols).
 
-    Os gols são tratados como independentes (Poisson simples). O modelo
-    Dixon-Coles, que corrige a correlação em placares baixos, fica para a V4.
+    A base é o produto de duas Poissons (gols independentes). Sobre ela aplica-se
+    a correção de **Dixon-Coles** nas quatro células de baixa pontuação
+    (0-0, 0-1, 1-0, 1-1), que corrige a correlação que a Poisson simples ignora.
+    Com ``rho < 0`` os empates de placar baixo ganham probabilidade — alinhando
+    o modelo à frequência real de empates (ver ``DIXON_COLES_RHO``).
+    ``rho = 0`` recupera a Poisson pura.
 
     Returns
     -------
@@ -168,7 +185,17 @@ def calculate_score_matrix(lambda_a: float, lambda_b: float, max_goals: int = 6)
     p_a = poisson.pmf(goals, lambda_a)
     p_b = poisson.pmf(goals, lambda_b)
     matrix = np.outer(p_a, p_b)
-    # Renormaliza para compensar a cauda truncada em max_goals.
+
+    # Correção Dixon-Coles (tau) nas células de baixa pontuação.
+    if rho and max_goals >= 1:
+        matrix[0, 0] *= 1.0 - lambda_a * lambda_b * rho
+        matrix[0, 1] *= 1.0 + lambda_a * rho
+        matrix[1, 0] *= 1.0 + lambda_b * rho
+        matrix[1, 1] *= 1.0 - rho
+        # tau pode, em teoria, gerar valor negativo para λ extremos; trava em 0.
+        np.clip(matrix, 0.0, None, out=matrix)
+
+    # Renormaliza para compensar a cauda truncada em max_goals e o ajuste tau.
     total = matrix.sum()
     if total > 0:
         matrix = matrix / total
