@@ -238,13 +238,17 @@ def _tab_prediction(teams, ratings, strengths):
     d4.metric("λ " + time_a, f"{la:.2f}", help="Gols esperados pelo modelo")
     d5.metric("λ " + time_b, f"{lb:.2f}")
 
-    # Placar e Elo
+    # Top-3 placares (em vez de um único "placar provável", que dá a falsa
+    # impressão de certeza — o modal costuma ter só ~12%).
+    top3 = probs["top3_placares"]
     e1,e2,e3,e4,e5 = st.columns(5)
-    e1.metric("Placar provável (Poisson)", probs["placar_mais_provavel"])
-    e2.metric("Placar provável (MC)",      mc["placar_mais_provavel"])
-    e3.metric("Elo " + time_a, f"{ratings.get(time_a,1500):.0f}")
-    e4.metric("Elo " + time_b, f"{ratings.get(time_b,1500):.0f}")
-    e5.metric("Diferença Elo", f"{diff_elo:+.0f}")
+    for col, (plc, p) in zip([e1, e2, e3], top3):
+        col.metric(f"Placar {plc}", f"{p*100:.1f}%", help="Top-3 placares mais prováveis")
+    e4.metric("Elo " + time_a, f"{ratings.get(time_a,1500):.0f}")
+    e5.metric("Diferença Elo", f"{diff_elo:+.0f}",
+              help=f"Elo {time_b}: {ratings.get(time_b,1500):.0f}")
+    st.caption(f"Soma dos 3 placares mais prováveis: {sum(p for _,p in top3)*100:.0f}% — "
+               "nenhum placar isolado domina; futebol tem alta variância.")
 
     # Mercados adicionais
     with st.expander("Mercados adicionais (Poisson)"):
@@ -362,6 +366,7 @@ def _tab_all_games(ratings, strengths):
             n_jogos[ta] += 1
             n_jogos[tb] += 1
 
+            plc, pplc = pr["top3_placares"][0]
             match_rows.append({
                 "Grupo": group,
                 "Mando": "🏠 " + ta if mando == 0 else "neutro",
@@ -369,7 +374,7 @@ def _tab_all_games(ratings, strengths):
                 "Vit A %": round(pa * 100, 1),
                 "Empate %": round(pe * 100, 1),
                 "Vit B %": round(pb * 100, 1),
-                "Placar": pr["placar_mais_provavel"],
+                "Placar": f"{plc} ({pplc*100:.0f}%)",
             })
 
     if not match_rows:

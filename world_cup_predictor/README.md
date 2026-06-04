@@ -150,9 +150,9 @@ Erro de gols (MAE): ~0.91,  bias ≈ 0
 **Dados reais (≈2.900 partidas de seleções da Copa 2026, pós-2000):**
 
 ```
-Brier  modelo:   0.609   (baseline 33/33/33: 0.667)   ← bate o baseline
+Brier  modelo:   0.608   (baseline 33/33/33: 0.667)   ← bate o baseline
 LogLoss modelo:  1.016   (baseline 33/33/33: 1.099)
-Calibração:      Vit A 45.1% prev / 45.1% obs · Empate 25.5% / 25.7% · Vit B 29.4% / 29.2%
+Calibração:      Vit A 46.0% prev / 45.1% obs · Empate 25.1% / 25.7% · Vit B 30.1% / 29.2%
 ```
 
 O modelo **bate o baseline** e está bem calibrado nas três saídas. O ganho de
@@ -160,14 +160,31 @@ Brier é modesto — o que é honesto: prever futebol internacional é genuiname
 difícil. A calibração (previsto ≈ observado) é o que mais importa para comparar
 com o mercado.
 
+### Por que tantos placares 1x1? (peso do Elo + display)
+
+Uma versão anterior previa **1x1 em 67%** dos jogos da Copa. A causa: o
+`ELO_SCALE` (peso da diferença de Elo nos λ) estava baixo demais (0.0005), então
+favoritos e azarões saíam com λ quase idênticos (~1.3) — faixa em que a Poisson
+tem **modo natural em 1x1**.
+
+A correção (grid search no backtest real): `ELO_SCALE = 0.0011`. Isso separa
+melhor os times **e melhora o Brier** (0.609 → 0.608). Os placares 1x1 caíram
+para **49%** dos jogos, com favoritos claros mostrando placares realistas
+(Brasil×Haiti → 3x0, França×Iraq → 3x0).
+
+Os ~49% restantes são jogos **genuinamente equilibrados**, onde 1x1/1x0 *são* os
+placares modais reais. Para não dar falsa impressão de certeza (o placar modal
+costuma ter só ~12%), o app mostra o **top-3 de placares** com suas
+probabilidades, em vez de um único "placar provável".
+
 ### Correção de Dixon-Coles (empates)
 
 A Poisson com gols independentes subestimava sistematicamente os empates
 (previsto 23.7% vs. observado 25.7% no backtest). A correção de **Dixon-Coles**
 (`goal_model.py`: `DIXON_COLES_RHO`) ajusta as quatro células de baixa pontuação
-(0-0, 0-1, 1-0, 1-1). O `rho = -0.08` foi calibrado por grid search no backtest
-real (mínimo de Brier + empate previsto ≈ observado). Resultado: empate previsto
-passou a 25.5% (≈ observado 25.7%) sem piorar as demais saídas.
+(0-0, 0-1, 1-0, 1-1). O `rho = -0.12` foi re-calibrado por grid search após o
+aumento do `ELO_SCALE` (que reduz empates): mantém empate previsto ≈ 25.1%
+(observado 25.7%) com Brier 0.608.
 
 ### Vantagem de campo (e por que a Copa é neutra)
 
