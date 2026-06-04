@@ -132,8 +132,8 @@ def main():
             st.warning("CSV real não encontrado. Baixe `results.csv` — veja o README.")
 
     # Abas
-    tab_pred, tab_odds, tab_rank, tab_dados = st.tabs(
-        ["🎯 Prever Jogo", "📈 Análise de Odds", "🏆 Ranking", "🗃️ Dados"]
+    tab_pred, tab_all, tab_odds, tab_rank, tab_dados = st.tabs(
+        ["🎯 Prever Jogo", "🗓️ Toda a Copa", "📈 Análise de Odds", "🏆 Ranking", "🗃️ Dados"]
     )
 
     # ===================================================================
@@ -143,19 +143,25 @@ def main():
         _tab_prediction(teams, ratings, strengths)
 
     # ===================================================================
-    # TAB 2 — Análise de Odds
+    # TAB 2 — Todos os jogos da fase de grupos
+    # ===================================================================
+    with tab_all:
+        _tab_all_games(ratings, strengths)
+
+    # ===================================================================
+    # TAB 3 — Análise de Odds
     # ===================================================================
     with tab_odds:
         _tab_odds(teams, ratings, strengths)
 
     # ===================================================================
-    # TAB 3 — Ranking
+    # TAB 4 — Ranking
     # ===================================================================
     with tab_rank:
         _tab_ranking(teams, ratings, strengths)
 
     # ===================================================================
-    # TAB 4 — Dados e calibração
+    # TAB 5 — Dados e calibração
     # ===================================================================
     with tab_dados:
         _tab_dados(matches, matches_all, fonte)
@@ -266,15 +272,40 @@ def _tab_prediction(teams, ratings, strengths):
             "- Células onde coluna > linha → prob. de vitória do Time B\n\n"
             "**Como usar:** mercados de placar exato em casas de apostas costumam pagar "
             "odds altas — a matriz ajuda a identificar quais placares têm probabilidade "
-            "acima da implícita na odd oferecida."
+            "acima da implícita na odd oferecida.\n\n"
+            "**Totais (linha/coluna):** a coluna/linha **Total** é a probabilidade marginal — "
+            "ex.: `Total` na linha de `Time A 2g` = P(Time A fazer exatamente 2 gols), somando "
+            "todos os placares dessa linha.\n\n"
+            "**Acumulado (Acum. ≤):** probabilidade acumulada — ex.: `Acum. ≤` em `Time A 2g` = "
+            "P(Time A fazer **até** 2 gols). Útil para mercados de over/under por time."
         )
     n = matrix.shape[0]
-    mdf = pd.DataFrame(
-        np.round(matrix * 100, 1),
-        index=[f"{time_a} {i}g" for i in range(n)],
-        columns=[f"{time_b} {j}g" for j in range(n)],
+    core = np.round(matrix * 100, 1)
+    row_tot = matrix.sum(axis=1) * 100          # P(Time A = i gols)
+    col_tot = matrix.sum(axis=0) * 100          # P(Time B = j gols)
+    row_cum = np.cumsum(matrix.sum(axis=1)) * 100   # P(Time A ≤ i gols)
+    col_cum = np.cumsum(matrix.sum(axis=0)) * 100   # P(Time B ≤ j gols)
+
+    row_labels = [f"{time_a} {i}g" for i in range(n)]
+    col_labels = [f"{time_b} {j}g" for j in range(n)]
+
+    mdf = pd.DataFrame(core, index=row_labels, columns=col_labels)
+    # Coluna de totais (sobre os gols do Time A) + acumulado
+    mdf["Total"]   = np.round(row_tot, 1)
+    mdf["Acum. ≤"] = np.round(row_cum, 1)
+    # Linha de totais (sobre os gols do Time B) + acumulado
+    mdf.loc["Total"]   = list(np.round(col_tot, 1)) + [100.0, np.nan]
+    mdf.loc["Acum. ≤"] = list(np.round(col_cum, 1)) + [np.nan, np.nan]
+
+    styler = (
+        mdf.style
+        .format("{:.1f}", na_rep="")
+        # gradiente só no miolo (placares), para os totais não lavarem a escala
+        .background_gradient(cmap="Blues", subset=(row_labels, col_labels))
+        .set_properties(subset=(["Total", "Acum. ≤"], slice(None)), **{"font-weight": "bold"})
+        .set_properties(subset=(slice(None), ["Total", "Acum. ≤"]), **{"font-weight": "bold"})
     )
-    st.dataframe(mdf.style.background_gradient(cmap="Blues"), use_container_width=True)
+    st.dataframe(styler, use_container_width=True)
 
     st.caption("O Monte Carlo sorteia gols independentes (sem Dixon-Coles), então uma "
                "pequena diferença no empate vs. Poisson é esperada — é o efeito da correção "
@@ -282,7 +313,113 @@ def _tab_prediction(teams, ratings, strengths):
 
 
 # ---------------------------------------------------------------------------
-# TAB 2 — Análise de Odds
+# TAB 2 — Todos os jogos da fase de grupos
+# ---------------------------------------------------------------------------
+def _tab_all_games(ratings, strengths):
+    import itertools
+    from goal_model import (
+        estimate_lambdas_for_fixture, calculate_score_matrix, probabilities_from_matrix,
+    )
+
+    st.subheader("Previsão — todos os jogos da fase de grupos")
+    with st.expander("❓ Como funciona"):
+        st.markdown(
+            "Gera os **72 jogos** da fase de grupos (12 grupos × 6 confrontos) e prevê cada "
+            "um com Poisson + Dixon-Coles. Os **anfitriões** (EUA, México, Canadá) jogam "
+            "em casa nos jogos do seu grupo.\n\n"
+            "A **classificação projetada** usa **pontos esperados** "
+            "(`3 × P(vitória) + 1 × P(empate)`) somados nos 3 jogos de cada seleção. É uma "
+            "estimativa de quem avança — **não** uma simulação completa do torneio "
+            "(que exigiria sortear resultados e montar o mata-mata)."
+        )
+
+    avail = set(strengths.index)
+    match_rows = []
+    pts = {t: 0.0 for t in COPA_2026_TEAMS}
+    n_jogos = {t: 0 for t in COPA_2026_TEAMS}
+
+    for group, gteams in COPA_2026_GROUPS.items():
+        for x, y in itertools.combinations(gteams, 2):
+            if x not in avail or y not in avail:
+                continue
+            # Anfitrião (se houver) joga em casa e entra como Time A.
+            if x in HOSTS:
+                ta, tb, mando = x, y, 0
+            elif y in HOSTS:
+                ta, tb, mando = y, x, 0
+            else:
+                ta, tb, mando = x, y, 1
+
+            diff = ratings.get(ta, 1500) - ratings.get(tb, 1500)
+            la, lb = estimate_lambdas_for_fixture(
+                ta, tb, strengths, diferenca_elo=diff, mando_neutro=mando,
+            )
+            pr = probabilities_from_matrix(calculate_score_matrix(la, lb))
+            pa, pe, pb = pr["prob_vitoria_time_a"], pr["prob_empate"], pr["prob_vitoria_time_b"]
+
+            pts[ta] += 3 * pa + pe
+            pts[tb] += 3 * pb + pe
+            n_jogos[ta] += 1
+            n_jogos[tb] += 1
+
+            match_rows.append({
+                "Grupo": group,
+                "Mando": "🏠 " + ta if mando == 0 else "neutro",
+                "Time A": ta, "Time B": tb,
+                "Vit A %": round(pa * 100, 1),
+                "Empate %": round(pe * 100, 1),
+                "Vit B %": round(pb * 100, 1),
+                "Placar": pr["placar_mais_provavel"],
+            })
+
+    if not match_rows:
+        st.warning("Sem dados suficientes para gerar os jogos. Verifique o dataset.")
+        return
+
+    all_df = pd.DataFrame(match_rows)
+
+    sel = st.selectbox("Filtrar grupo", ["Todos os grupos"] + list(COPA_2026_GROUPS.keys()))
+    groups_to_show = list(COPA_2026_GROUPS.keys()) if sel == "Todos os grupos" else [sel]
+    show = all_df if sel == "Todos os grupos" else all_df[all_df["Grupo"] == sel]
+
+    # Classificação projetada (pontos esperados)
+    st.markdown("**Classificação projetada (pontos esperados)**")
+    stand_rows = []
+    for g in groups_to_show:
+        gt = [t for t in COPA_2026_GROUPS[g] if t in avail]
+        ranked = sorted(gt, key=lambda t: -pts[t])
+        for pos, t in enumerate(ranked, 1):
+            stand_rows.append({
+                "Grupo": g, "Pos": pos, "Seleção": t,
+                "Anfitrião": "🏠" if t in HOSTS else "",
+                "Pts esperados": round(pts[t], 2),
+                "Jogos": n_jogos[t],
+                "Avança": "✅" if pos <= 2 else ("🟡" if pos == 3 else ""),
+            })
+    stand_df = pd.DataFrame(stand_rows)
+    st.dataframe(
+        stand_df.style.background_gradient(subset=["Pts esperados"], cmap="Greens"),
+        hide_index=True, use_container_width=True,
+    )
+    st.caption("✅ top 2 (classificados direto) · 🟡 3º colocado (pode avançar como um dos "
+               "8 melhores terceiros). Pontos esperados = soma de `3×P(vit) + 1×P(empate)`.")
+
+    # Jogos
+    st.markdown("**Jogos previstos**")
+    st.dataframe(
+        show.style.background_gradient(subset=["Vit A %", "Empate %", "Vit B %"], cmap="Blues"),
+        hide_index=True, use_container_width=True,
+    )
+
+    csv = all_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇️ Baixar todos os jogos (CSV)", csv,
+        file_name="copa2026_fase_grupos.csv", mime="text/csv",
+    )
+
+
+# ---------------------------------------------------------------------------
+# TAB 3 — Análise de Odds
 # ---------------------------------------------------------------------------
 def _tab_odds(teams, ratings, strengths):
     from goal_model import estimate_lambdas_for_fixture, calculate_score_matrix, probabilities_from_matrix
