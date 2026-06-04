@@ -50,8 +50,10 @@ melhora a calibração. O ajuste de Elo é deliberadamente suave para não
 duplicar a informação de força já contida na forma.
 
 Depois de estimar os λ, uma distribuição de **Poisson** gera a matriz de
-placares, e uma simulação de **Monte Carlo** (10.000 partidas) confirma as
-probabilidades de forma independente.
+placares, com a **correção de Dixon-Coles** nos placares baixos (a Poisson
+simples trata os gols como independentes e subestima empates 0-0/1-1; o backtest
+confirmava empate previsto 23.7% vs. observado 25.7%). Uma simulação de
+**Monte Carlo** (10.000 partidas) confirma as probabilidades de forma independente.
 
 ---
 
@@ -145,16 +147,27 @@ LogLoss modelo:  1.074   (baseline 33/33/33: 1.099)
 Erro de gols (MAE): ~0.91,  bias ≈ 0
 ```
 
-**Dados reais (4.257 partidas de seleções da Copa 2026, pós-2000):**
+**Dados reais (≈2.900 partidas de seleções da Copa 2026, pós-2000):**
 
 ```
-Brier  modelo:   0.601   (baseline 33/33/33: 0.667)   ← bate o baseline
-LogLoss modelo:  1.004   (baseline 33/33/33: 1.099)
-Erro de gols (MAE): ~0.94,  bias ≈ +0.15
+Brier  modelo:   0.609   (baseline 33/33/33: 0.667)   ← bate o baseline
+LogLoss modelo:  1.016   (baseline 33/33/33: 1.099)
+Calibração:      Vit A 45.1% prev / 45.1% obs · Empate 25.5% / 25.7% · Vit B 29.4% / 29.2%
 ```
 
-Em ambos os casos o modelo **bate o baseline**. O ganho é modesto — o que é
-honesto: prever futebol internacional é genuinamente difícil.
+O modelo **bate o baseline** e está bem calibrado nas três saídas. O ganho de
+Brier é modesto — o que é honesto: prever futebol internacional é genuinamente
+difícil. A calibração (previsto ≈ observado) é o que mais importa para comparar
+com o mercado.
+
+### Correção de Dixon-Coles (empates)
+
+A Poisson com gols independentes subestimava sistematicamente os empates
+(previsto 23.7% vs. observado 25.7% no backtest). A correção de **Dixon-Coles**
+(`goal_model.py`: `DIXON_COLES_RHO`) ajusta as quatro células de baixa pontuação
+(0-0, 0-1, 1-0, 1-1). O `rho = -0.08` foi calibrado por grid search no backtest
+real (mínimo de Brier + empate previsto ≈ observado). Resultado: empate previsto
+passou a 25.5% (≈ observado 25.7%) sem piorar as demais saídas.
 
 ### Vantagem de campo (e por que a Copa é neutra)
 
@@ -255,9 +268,9 @@ bem-vindas — serão aproveitadas nas versões futuras.
   não recomendações.
 - **Poucos jogos / alta variância.** Seleções jogam pouco; risco de overfitting
   é alto. A forma recente é encolhida justamente por isso.
-- **Gols tratados como independentes.** A Poisson simples ignora a correlação
-  em placares baixos (0x0, 1x1). O modelo **Dixon-Coles** corrige isso e está
-  no roadmap (V4).
+- **Correlação de gols.** A Poisson simples ignora a correlação em placares
+  baixos (0x0, 1x1). Aplicamos a correção **Dixon-Coles** (`rho = -0.08`) que
+  recalibra os empates; uma versão completa estimaria `rho` junto com os λ (V4).
 - **Amistosos valem menos** que jogos oficiais; o modelo pondera por competição,
   mas a heurística é simples.
 - **`edge` não é decisão.** Avalie liquidez, margem da casa, qualidade dos
@@ -277,7 +290,7 @@ bem-vindas — serão aproveitadas nas versões futuras.
   campo** condicionado ao mando (neutro na Copa, exceto anfitriões). ✅
   🟡 **Pendente:** odds reais via football-data.co.uk.
 - **V4 — Modelo avançado:** xG, escalações, lesões, valor de elenco,
-  **Dixon-Coles**, XGBoost/LightGBM.
+  **Dixon-Coles completo** (estimar `rho` junto com os λ), XGBoost/LightGBM.
 
 A ordem correta é: **(1) prever probabilidades → (2) medir calibração →
 (3) comparar com mercado → (4) só então buscar edge.** Sem calibração, um
