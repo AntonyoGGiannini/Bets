@@ -150,13 +150,18 @@ def generate_mock_fixtures(
 ) -> pd.DataFrame:
     """Gera uma lista de confrontos futuros (a prever) para a Copa de 2026.
 
+    A Copa é em campo neutro (``mando_neutro=1``), exceto os anfitriões
+    (EUA, México, Canadá), que mandam os jogos de grupo em casa.
+
     Returns
     -------
     pandas.DataFrame
-        Colunas: ``data_jogo``, ``time_a``, ``time_b``, ``competicao``, ``fase``.
+        Colunas: ``data_jogo``, ``time_a``, ``time_b``, ``competicao``,
+        ``fase``, ``mando_neutro``.
     """
     rng = np.random.default_rng(seed)
     pool = teams or list(MOCK_TEAMS.keys())
+    hosts = {"Estados Unidos", "México", "Canadá"}
 
     fixtures = [
         ("Brasil", "Alemanha", "Grupo"),
@@ -174,6 +179,7 @@ def generate_mock_fixtures(
     for i, (a, b, phase) in enumerate(fixtures):
         if a not in pool or b not in pool:
             a, b = rng.choice(pool, size=2, replace=False)
+        neutro = 0 if (a in hosts and phase == "Grupo") else 1
         rows.append(
             {
                 "data_jogo": base_date + pd.Timedelta(days=i),
@@ -181,6 +187,7 @@ def generate_mock_fixtures(
                 "time_b": b,
                 "competicao": "World Cup",
                 "fase": phase,
+                "mando_neutro": neutro,
             }
         )
     return pd.DataFrame(rows)
@@ -202,13 +209,15 @@ def generate_mock_odds(fixtures: pd.DataFrame, seed: int = 11) -> pd.DataFrame:
         p_draw = 0.27
         p_b = max(0.05, 1.0 - p_a - p_draw)
 
-        # Normaliza e aplica margem.
+        # Normaliza e aplica margem. odd = 1 / (p * margin) faz as
+        # probabilidades implícitas (1/odd) somarem ~margin (overround > 1),
+        # reproduzindo a margem da casa de ~5%.
         total = p_a + p_draw + p_b
         p_a, p_draw, p_b = p_a / total, p_draw / total, p_b / total
         margin = 1.05
-        odd_a = round(margin / max(p_a, 1e-6), 2)
-        odd_draw = round(margin / max(p_draw, 1e-6), 2)
-        odd_b = round(margin / max(p_b, 1e-6), 2)
+        odd_a = round(1.0 / (max(p_a, 1e-6) * margin), 2)
+        odd_draw = round(1.0 / (max(p_draw, 1e-6) * margin), 2)
+        odd_b = round(1.0 / (max(p_b, 1e-6) * margin), 2)
 
         rows.append(
             {
@@ -248,3 +257,41 @@ def load_teams(path: Optional[str] = None) -> pd.DataFrame:
     if path and os.path.exists(path):
         return pd.read_csv(path)
     return pd.DataFrame({"time": list(MOCK_TEAMS.keys())})
+
+
+# ---------------------------------------------------------------------------
+# Loaders para fontes de dados reais (wrappers sobre data_fetcher).
+# ---------------------------------------------------------------------------
+def load_matches_kaggle(
+    path: str,
+    min_date: Optional[str] = "2000-01-01",
+    copa_teams_only: bool = False,
+) -> pd.DataFrame:
+    """Lê o CSV do Kaggle e normaliza para o formato do pipeline.
+
+    Atalho para ``data_fetcher.load_kaggle_results``.  Para mais opções
+    (filtro de data máxima, lista customizada de times) importe
+    ``data_fetcher`` diretamente.
+
+    Parameters
+    ----------
+    path:
+        Caminho para ``results.csv`` do dataset Kaggle.
+    min_date:
+        Filtra partidas a partir desta data (padrão: 2000-01-01 para evitar
+        dados muito antigos com qualidade variável).
+    copa_teams_only:
+        Se True, mantém só partidas entre seleções da Copa 2026.
+    """
+    from data_fetcher import load_kaggle_results
+    return load_kaggle_results(path, min_date=min_date, copa_teams_only=copa_teams_only)
+
+
+def load_odds_footballdata(path: str) -> pd.DataFrame:
+    """Lê um CSV do football-data.co.uk e normaliza para o formato do pipeline.
+
+    Atalho para ``data_fetcher.load_odds_footballdata``.
+    Colunas suportadas: B365H/D/A, PSH/D/A, AvgH/D/A ou MaxH/D/A.
+    """
+    from data_fetcher import load_odds_footballdata as _load
+    return _load(path)

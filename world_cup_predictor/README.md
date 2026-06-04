@@ -98,11 +98,16 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 # 2. instalar dependências
 pip install -r requirements.txt
 
-# 3. rodar o pipeline V1 (gera os CSVs em outputs/)
+# 3. rodar o pipeline V1 com dados mock (gera os CSVs em outputs/)
 python src/pipeline.py
 
-# 4. rodar o backtest de calibração
+# 3b. (opcional) rodar com DADOS REAIS — baixe o CSV antes (ver seção abaixo)
+python src/pipeline.py data/raw/results.csv
+
+# 4. rodar o backtest de calibração (mock)
 python src/backtest.py
+#     ...ou com dados reais:
+python src/backtest.py data/raw/results.csv
 
 # 5. (opcional) app interativo
 streamlit run app/streamlit_app.py
@@ -127,10 +132,12 @@ Brasil x Alemanha  (Grupo)
   Placar provável: 1x0
 ```
 
-### Calibração (backtest walk-forward sobre os dados mock)
+### Calibração (backtest walk-forward)
 
 O backtest prevê cada jogo usando **apenas** a informação anterior a ele
-(sem vazamento), e só depois atualiza o Elo:
+(sem vazamento), e só depois atualiza o Elo.
+
+**Dados mock (600–800 partidas sintéticas):**
 
 ```
 Brier  modelo:   0.650   (baseline 33/33/33: 0.667)   ← menor é melhor
@@ -138,30 +145,104 @@ LogLoss modelo:  1.074   (baseline 33/33/33: 1.099)
 Erro de gols (MAE): ~0.91,  bias ≈ 0
 ```
 
-O modelo **bate o baseline** e fica bem calibrado (probabilidade prevista ≈
-frequência observada nas faixas). O ganho é modesto — o que é honesto:
-prever futebol internacional é genuinamente difícil.
+**Dados reais (4.257 partidas de seleções da Copa 2026, pós-2000):**
+
+```
+Brier  modelo:   0.601   (baseline 33/33/33: 0.667)   ← bate o baseline
+LogLoss modelo:  1.004   (baseline 33/33/33: 1.099)
+Erro de gols (MAE): ~0.94,  bias ≈ +0.15
+```
+
+Em ambos os casos o modelo **bate o baseline**. O ganho é modesto — o que é
+honesto: prever futebol internacional é genuinamente difícil.
+
+### Vantagem de campo (e por que a Copa é neutra)
+
+Uma primeira versão do backtest real mostrava o modelo **subestimando o
+mandante**: previa ~45% de vitória do `time_a` quando o observado era ~54%.
+A causa: no histórico real o `time_a` joga em casa nas eliminatórias e
+amistosos, e o Elo + forma não capturavam isso sozinhos.
+
+A correção foi um termo explícito de **vantagem de campo** (`goal_model.py`:
+`HOME_ADV_ATTACK`, `HOME_ADV_DEFENSE`) aplicado **somente** quando
+`mando_neutro == 0`. Resultado: a calibração ficou justa (pred ≈ obs em todas
+as faixas) e o Brier caiu de 0.616 para 0.601.
+
+> **A Copa do Mundo é em campo neutro.** Por isso a vantagem de campo é
+> **zerada** nas previsões da Copa (`mando_neutro = 1`) — exceto para os
+> **anfitriões** (EUA, México, Canadá), que mandam os jogos de grupo em casa.
+> Assim o modelo é calibrado no histórico real **sem** injetar um viés de
+> mando espúrio nos jogos neutros do mundial.
 
 ---
 
-## Usando seus próprios dados
+## Usando dados reais (recomendado para a V3)
 
-Os loaders aceitam CSVs reais e só caem no mock se o arquivo não existir:
+### Fonte 1 — Histórico de partidas: Kaggle (gratuito)
 
-```python
-from data_loader import load_matches, load_odds
-matches = load_matches("data/raw/partidas.csv")
-odds = load_odds("data/raw/odds.csv")
+O dataset mais completo de resultados internacionais:
+
+```bash
+pip install kaggle
+kaggle datasets download martj42/international-football-results-from-1872-to-2017
+unzip international-football-results-from-1872-to-2017.zip -d data/raw/
 ```
 
-**Mínimo aceitável** para o histórico (`partidas.csv`):
+O arquivo `results.csv` (~48.000 partidas desde 1872) é normalizado
+automaticamente pelo módulo `data_fetcher`:
+
+```python
+from data_fetcher import load_kaggle_results, filter_copa_teams
+
+matches = load_kaggle_results("data/raw/results.csv", min_date="2000-01-01")
+matches_copa = filter_copa_teams(matches)  # só seleções da Copa 2026
+```
+
+Ou via atalho em `data_loader`:
+
+```python
+from data_loader import load_matches_kaggle
+matches = load_matches_kaggle("data/raw/results.csv")
+```
+
+### Fonte 2 — Odds históricas: football-data.co.uk (gratuito)
+
+CSVs por temporada/torneio disponíveis diretamente (sem API key).
+Suporta colunas `B365H/D/A`, `PSH/D/A`, `AvgH/D/A`:
+
+```python
+from data_loader import load_odds_footballdata
+odds = load_odds_footballdata("data/raw/odds_wc2022.csv")
+```
+
+### Fonte 3 — Odds ao vivo: The Odds API
+
+Para as partidas da Copa 2026 em tempo real (free tier: 500 req/mês):
+obtenha uma chave em [the-odds-api.com](https://the-odds-api.com) e use
+`requests` para buscar os mercados antes de cada rodada.
+
+### Diagnóstico do CSV carregado
+
+```bash
+python src/data_fetcher.py data/raw/results.csv
+```
+
+Imprime estatísticas: n_partidas, período, gols/time médio, distribuição
+por competição.
+
+### Formato mínimo para CSV customizado
+
+Se preferir construir seu próprio CSV:
 
 ```
 data_jogo, time_a, time_b, gols_time_a, gols_time_b, competicao, fase
 ```
 
-Colunas extras (xG, chutes, descanso, ranking FIFA, etc.) são bem-vindas e
-serão úteis nas versões futuras.
+Valores válidos para `competicao`: `World Cup`, `Continental`, `Qualifiers`,
+`Nations League`, `Friendly`.
+
+Colunas extras (`xG`, `chutes`, `dias_descanso`, `ranking_fifa`, etc.) são
+bem-vindas — serão aproveitadas nas versões futuras.
 
 ---
 
@@ -190,8 +271,11 @@ serão úteis nas versões futuras.
   com dados mock e tabela de probabilidades. ✅
 - **V2 — Odds e edge:** importar odds, remover margem, calcular e classificar
   *edge*. ✅ (já incluído em `odds_analysis.py`)
-- **V3 — Calibração e backtest:** backtest em Copas/Euro/Eliminatórias, Brier,
-  Log Loss, calibração. 🟡 (semente em `backtest.py`)
+- **V3 — Dados reais, calibração e backtest:** ingestão de dados reais
+  (`data_fetcher.py`, ~48k partidas do Kaggle), backtest walk-forward em
+  Copas/Euro/Eliminatórias com Brier/Log Loss, e termo de **vantagem de
+  campo** condicionado ao mando (neutro na Copa, exceto anfitriões). ✅
+  🟡 **Pendente:** odds reais via football-data.co.uk.
 - **V4 — Modelo avançado:** xG, escalações, lesões, valor de elenco,
   **Dixon-Coles**, XGBoost/LightGBM.
 

@@ -43,11 +43,27 @@ def run_pipeline(
     n_simulations: int = 10_000,
     max_goals: int = 6,
     write_outputs: bool = True,
+    real_data_path: str | None = None,
 ) -> dict:
-    """Executa a V1 completa e devolve os DataFrames produzidos."""
-    # 1. Dados históricos (mock) + confrontos futuros + odds.
-    matches = data_loader.generate_mock_matches(n_matches=n_history)
-    fixtures = data_loader.generate_mock_fixtures()
+    """Executa a V1 completa e devolve os DataFrames produzidos.
+
+    Parameters
+    ----------
+    real_data_path:
+        Caminho para o CSV real do Kaggle (``results.csv``). Se fornecido,
+        usa dados reais (seleções em inglês) em vez do histórico mock; as
+        fixtures também passam a usar nomes em inglês.
+    """
+    # 1. Dados históricos + confrontos futuros + odds.
+    if real_data_path:
+        from data_fetcher import load_kaggle_results, filter_copa_teams, generate_real_fixtures
+        matches = filter_copa_teams(
+            load_kaggle_results(real_data_path, min_date="2000-01-01")
+        )
+        fixtures = generate_real_fixtures()
+    else:
+        matches = data_loader.generate_mock_matches(n_matches=n_history)
+        fixtures = data_loader.generate_mock_fixtures()
     odds = data_loader.generate_mock_odds(fixtures)
 
     # 2. Elo a partir do histórico cronológico.
@@ -62,22 +78,25 @@ def run_pipeline(
 
     pred_rows = []
     sim_rows = []
-    for row in fixtures.itertuples(index=False):
+    for i, row in enumerate(fixtures.itertuples(index=False)):
         lambda_a, lambda_b = estimate_lambdas_for_fixture(
             row.time_a,
             row.time_b,
             strengths,
             diferenca_elo=float(row.diferenca_elo),
             jogo_eliminatorio=int(row.jogo_eliminatorio),
+            # Campo neutro por padrão (Copa); 0 só para anfitriões mandantes.
+            mando_neutro=int(getattr(row, "mando_neutro", 1)),
         )
 
         # Probabilidades exatas via matriz de Poisson.
         matrix = calculate_score_matrix(lambda_a, lambda_b, max_goals=max_goals)
         poisson_probs = probabilities_from_matrix(matrix)
 
-        # Verificação cruzada via Monte Carlo.
-        mc = simulate_match(lambda_a, lambda_b, n_simulations=n_simulations, seed=hash(
-            (row.time_a, row.time_b)) % (2**32))
+        # Verificação cruzada via Monte Carlo. Seed determinístico pelo índice
+        # do confronto — reprodutível entre processos (hash() de strings é
+        # salgado por processo e não serve como seed estável).
+        mc = simulate_match(lambda_a, lambda_b, n_simulations=n_simulations, seed=2000 + i)
 
         pred_rows.append({
             "data_jogo": row.data_jogo,
@@ -158,4 +177,13 @@ def _print_summary(result: dict) -> None:
 
 
 if __name__ == "__main__":
-    _print_summary(run_pipeline())
+    import sys
+
+    # Uso: python src/pipeline.py [caminho_para_results.csv]
+    # Com argumento → roda com dados reais; sem argumento → dados mock.
+    real_path = sys.argv[1] if len(sys.argv) > 1 else None
+    if real_path:
+        print(f"Rodando com DADOS REAIS: {real_path}")
+    else:
+        print("Rodando com DADOS MOCK (passe o caminho de results.csv para dados reais)")
+    _print_summary(run_pipeline(real_data_path=real_path))
