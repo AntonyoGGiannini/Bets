@@ -47,6 +47,23 @@ REAL_CSV = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data",
 RESULTS_URL = "https://raw.githubusercontent.com/martj42/international_results/master/results.csv"
 
 
+def top3_from_matrix(matrix) -> list[tuple[str, float]]:
+    """Top-3 placares mais prováveis (label, prob) a partir da matriz de placares.
+
+    Calculado aqui no app — e não lido de ``probabilities_from_matrix`` — para
+    não depender de uma chave nova no dict retornado. No Streamlit Cloud o
+    re-deploy reexecuta o script mas pode manter ``goal_model`` em cache no
+    ``sys.modules``; derivar o top-3 da própria matriz evita o ``KeyError`` se
+    o módulo importado estiver desatualizado.
+    """
+    flat = np.argsort(matrix, axis=None)[::-1][:3]
+    out = []
+    for f in flat:
+        i, j = np.unravel_index(f, matrix.shape)
+        out.append((f"{i}x{j}", float(matrix[i, j])))
+    return out
+
+
 @st.cache_data(show_spinner="Baixando dados reais (results.csv)...")
 def ensure_real_csv() -> bool:
     """Garante que o results.csv exista localmente, baixando se necessário.
@@ -240,7 +257,7 @@ def _tab_prediction(teams, ratings, strengths):
 
     # Top-3 placares (em vez de um único "placar provável", que dá a falsa
     # impressão de certeza — o modal costuma ter só ~12%).
-    top3 = probs["top3_placares"]
+    top3 = top3_from_matrix(matrix)
     e1,e2,e3,e4,e5 = st.columns(5)
     for col, (plc, p) in zip([e1, e2, e3], top3):
         col.metric(f"Placar {plc}", f"{p*100:.1f}%", help="Top-3 placares mais prováveis")
@@ -358,7 +375,8 @@ def _tab_all_games(ratings, strengths):
             la, lb = estimate_lambdas_for_fixture(
                 ta, tb, strengths, diferenca_elo=diff, mando_neutro=mando,
             )
-            pr = probabilities_from_matrix(calculate_score_matrix(la, lb))
+            matrix = calculate_score_matrix(la, lb)
+            pr = probabilities_from_matrix(matrix)
             pa, pe, pb = pr["prob_vitoria_time_a"], pr["prob_empate"], pr["prob_vitoria_time_b"]
 
             pts[ta] += 3 * pa + pe
@@ -366,7 +384,7 @@ def _tab_all_games(ratings, strengths):
             n_jogos[ta] += 1
             n_jogos[tb] += 1
 
-            plc, pplc = pr["top3_placares"][0]
+            plc, pplc = top3_from_matrix(matrix)[0]
             match_rows.append({
                 "Grupo": group,
                 "Mando": "🏠 " + ta if mando == 0 else "neutro",
