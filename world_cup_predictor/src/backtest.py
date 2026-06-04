@@ -91,6 +91,9 @@ def run_backtest(
                     "fragilidade_defensiva_b": float(sb["fragilidade_defensiva"]),
                     "diferenca_elo": ratings[row.time_a] - ratings[row.time_b],
                     "jogo_eliminatorio": 0,
+                    # Mando real da partida (Kaggle traz "neutral"); sem a coluna
+                    # assume mandante (0), que é o caso da maioria dos jogos.
+                    "mando_neutro": int(getattr(row, "mando_neutro", 0)),
                 }
                 la, lb = estimate_lambdas(features)
                 probs = probabilities_from_matrix(calculate_score_matrix(la, lb))

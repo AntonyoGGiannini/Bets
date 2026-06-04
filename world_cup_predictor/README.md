@@ -148,20 +148,31 @@ Erro de gols (MAE): ~0.91,  bias ≈ 0
 **Dados reais (4.257 partidas de seleções da Copa 2026, pós-2000):**
 
 ```
-Brier  modelo:   0.616   (baseline 33/33/33: 0.667)   ← bate o baseline
-LogLoss modelo:  1.026   (baseline 33/33/33: 1.099)
-Erro de gols (MAE): ~0.93,  bias ≈ +0.05
+Brier  modelo:   0.601   (baseline 33/33/33: 0.667)   ← bate o baseline
+LogLoss modelo:  1.004   (baseline 33/33/33: 1.099)
+Erro de gols (MAE): ~0.94,  bias ≈ +0.15
 ```
 
 Em ambos os casos o modelo **bate o baseline**. O ganho é modesto — o que é
 honesto: prever futebol internacional é genuinamente difícil.
 
-> **Achado nos dados reais:** a curva de calibração mostra o modelo
-> **subestimando o mandante** (quando prevê ~45% de vitória do time A, o
-> observado é ~54%). O `time_a` nos dados reais é o time da casa, e há uma
-> **vantagem de campo** que o Elo + forma recente não captura sozinho.
-> Adicionar um termo explícito de mando de campo (já presente como
-> `mando_neutro`) é o próximo passo de calibração — ver Roadmap V3.
+### Vantagem de campo (e por que a Copa é neutra)
+
+Uma primeira versão do backtest real mostrava o modelo **subestimando o
+mandante**: previa ~45% de vitória do `time_a` quando o observado era ~54%.
+A causa: no histórico real o `time_a` joga em casa nas eliminatórias e
+amistosos, e o Elo + forma não capturavam isso sozinhos.
+
+A correção foi um termo explícito de **vantagem de campo** (`goal_model.py`:
+`HOME_ADV_ATTACK`, `HOME_ADV_DEFENSE`) aplicado **somente** quando
+`mando_neutro == 0`. Resultado: a calibração ficou justa (pred ≈ obs em todas
+as faixas) e o Brier caiu de 0.616 para 0.601.
+
+> **A Copa do Mundo é em campo neutro.** Por isso a vantagem de campo é
+> **zerada** nas previsões da Copa (`mando_neutro = 1`) — exceto para os
+> **anfitriões** (EUA, México, Canadá), que mandam os jogos de grupo em casa.
+> Assim o modelo é calibrado no histórico real **sem** injetar um viés de
+> mando espúrio nos jogos neutros do mundial.
 
 ---
 
@@ -262,9 +273,9 @@ bem-vindas — serão aproveitadas nas versões futuras.
   *edge*. ✅ (já incluído em `odds_analysis.py`)
 - **V3 — Dados reais, calibração e backtest:** ingestão de dados reais
   (`data_fetcher.py`, ~48k partidas do Kaggle), backtest walk-forward em
-  Copas/Euro/Eliminatórias com Brier/Log Loss. ✅ (ingestão + backtest reais)
-  🟡 **Pendente:** termo explícito de **vantagem de campo** (o backtest real
-  mostrou subestimação do mandante) e odds reais via football-data.co.uk.
+  Copas/Euro/Eliminatórias com Brier/Log Loss, e termo de **vantagem de
+  campo** condicionado ao mando (neutro na Copa, exceto anfitriões). ✅
+  🟡 **Pendente:** odds reais via football-data.co.uk.
 - **V4 — Modelo avançado:** xG, escalações, lesões, valor de elenco,
   **Dixon-Coles**, XGBoost/LightGBM.
 

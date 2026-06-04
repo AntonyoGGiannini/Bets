@@ -150,13 +150,18 @@ def generate_mock_fixtures(
 ) -> pd.DataFrame:
     """Gera uma lista de confrontos futuros (a prever) para a Copa de 2026.
 
+    A Copa é em campo neutro (``mando_neutro=1``), exceto os anfitriões
+    (EUA, México, Canadá), que mandam os jogos de grupo em casa.
+
     Returns
     -------
     pandas.DataFrame
-        Colunas: ``data_jogo``, ``time_a``, ``time_b``, ``competicao``, ``fase``.
+        Colunas: ``data_jogo``, ``time_a``, ``time_b``, ``competicao``,
+        ``fase``, ``mando_neutro``.
     """
     rng = np.random.default_rng(seed)
     pool = teams or list(MOCK_TEAMS.keys())
+    hosts = {"Estados Unidos", "México", "Canadá"}
 
     fixtures = [
         ("Brasil", "Alemanha", "Grupo"),
@@ -174,6 +179,7 @@ def generate_mock_fixtures(
     for i, (a, b, phase) in enumerate(fixtures):
         if a not in pool or b not in pool:
             a, b = rng.choice(pool, size=2, replace=False)
+        neutro = 0 if (a in hosts and phase == "Grupo") else 1
         rows.append(
             {
                 "data_jogo": base_date + pd.Timedelta(days=i),
@@ -181,6 +187,7 @@ def generate_mock_fixtures(
                 "time_b": b,
                 "competicao": "World Cup",
                 "fase": phase,
+                "mando_neutro": neutro,
             }
         )
     return pd.DataFrame(rows)

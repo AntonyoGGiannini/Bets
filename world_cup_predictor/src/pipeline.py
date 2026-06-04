@@ -85,6 +85,8 @@ def run_pipeline(
             strengths,
             diferenca_elo=float(row.diferenca_elo),
             jogo_eliminatorio=int(row.jogo_eliminatorio),
+            # Campo neutro por padrão (Copa); 0 só para anfitriões mandantes.
+            mando_neutro=int(getattr(row, "mando_neutro", 1)),
         )
 
         # Probabilidades exatas via matriz de Poisson.

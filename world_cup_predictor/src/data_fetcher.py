@@ -269,12 +269,19 @@ def load_odds_footballdata(path: str) -> pd.DataFrame:
     return result.dropna().reset_index(drop=True)
 
 
+# Anfitriões da Copa 2026 — jogam em casa na fase de grupos (campo NÃO neutro).
+HOSTS_2026 = {"United States", "Mexico", "Canada"}
+
+
 def generate_real_fixtures() -> pd.DataFrame:
     """Confrontos plausíveis da Copa 2026 com nomes EM INGLÊS.
 
     Use esta função (em vez de ``data_loader.generate_mock_fixtures``, que usa
     nomes em português) quando o histórico vier de dados reais do Kaggle, para
     que os nomes das seleções batam com os ratings/forças construídos.
+
+    A Copa do Mundo é em campo neutro (``mando_neutro=1``), EXCETO para os
+    anfitriões (EUA, México, Canadá), que mandam seus jogos de grupo em casa.
     """
     fixtures = [
         ("Brazil", "Germany", "Grupo"),
@@ -289,12 +296,15 @@ def generate_real_fixtures() -> pd.DataFrame:
     base_date = pd.Timestamp("2026-06-11")
     rows = []
     for i, (a, b, phase) in enumerate(fixtures):
+        # Anfitrião como mandante (fase de grupos) → mando_neutro=0; senão neutro.
+        neutro = 0 if (a in HOSTS_2026 and phase == "Grupo") else 1
         rows.append({
             "data_jogo": base_date + pd.Timedelta(days=i),
             "time_a": a,
             "time_b": b,
             "competicao": "World Cup",
             "fase": phase,
+            "mando_neutro": neutro,
         })
     return pd.DataFrame(rows)
 

@@ -43,6 +43,14 @@ FORM_SHRINKAGE = 0.35
 # Em jogos de mata-mata o futebol tende a ser mais conservador (seção 17.3).
 KNOCKOUT_GOAL_DAMPING = 0.92
 
+# Vantagem de campo: aplicada APENAS quando o time_a joga em casa
+# (``mando_neutro == 0``). Em campo neutro — como a maioria dos jogos da Copa
+# do Mundo — nenhum ajuste é feito. Calibrado pelo backtest walk-forward em
+# dados reais (o modelo sem mando subestimava o mandante). O mandante marca
+# ~30% mais; o visitante marca ~7% menos.
+HOME_ADV_ATTACK = 1.30
+HOME_ADV_DEFENSE = 0.93
+
 
 def _shrink(ratio: float, amount: float = FORM_SHRINKAGE) -> float:
     """Puxa uma razão de forma (centrada em 1.0) em direção à média."""
@@ -86,6 +94,12 @@ def estimate_lambdas(
     lambda_a = league_avg_goals * off_a * def_b * elo_adj
     lambda_b = league_avg_goals * off_b * def_a / elo_adj
 
+    # Vantagem de campo: só quando o time_a é mandante (mando_neutro == 0).
+    # Em campo neutro (padrão; quase toda a Copa do Mundo) não há ajuste.
+    if not match_features.get("mando_neutro", 1):
+        lambda_a *= HOME_ADV_ATTACK
+        lambda_b *= HOME_ADV_DEFENSE
+
     # Ajuste de contexto: mata-mata reduz levemente o número de gols.
     if match_features.get("jogo_eliminatorio", 0):
         lambda_a *= KNOCKOUT_GOAL_DAMPING
@@ -103,12 +117,16 @@ def estimate_lambdas_for_fixture(
     strengths: pd.DataFrame,
     diferenca_elo: Optional[float] = None,
     jogo_eliminatorio: int = 0,
+    mando_neutro: int = 1,
     league_avg_goals: float = LEAGUE_AVG_GOALS,
 ) -> tuple[float, float]:
     """Conveniência: monta o dicionário de features a partir do resumo de força.
 
     ``strengths`` é o DataFrame indexado por time produzido em
     ``feature_engineering.build_team_strengths``.
+
+    ``mando_neutro`` controla a vantagem de campo: 1 (padrão) = campo neutro,
+    como na maioria dos jogos da Copa; 0 = ``time_a`` é mandante.
     """
     from elo_model import DEFAULT_ELO
 
@@ -128,6 +146,7 @@ def estimate_lambdas_for_fixture(
         "fragilidade_defensiva_b": float(sb["fragilidade_defensiva"]),
         "diferenca_elo": diferenca_elo,
         "jogo_eliminatorio": jogo_eliminatorio,
+        "mando_neutro": mando_neutro,
     }
     return estimate_lambdas(features, league_avg_goals)
 
