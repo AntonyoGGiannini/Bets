@@ -44,7 +44,31 @@ TEAM_GROUP = {t: g for g, teams in COPA_2026_GROUPS.items() for t in teams}
 
 HOSTS = {"United States", "Mexico", "Canada"}
 REAL_CSV = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "raw", "results.csv"))
-HAS_REAL = os.path.exists(REAL_CSV)
+RESULTS_URL = "https://raw.githubusercontent.com/martj42/international_results/master/results.csv"
+
+
+@st.cache_data(show_spinner="Baixando dados reais (results.csv)...")
+def ensure_real_csv() -> bool:
+    """Garante que o results.csv exista localmente, baixando se necessário.
+
+    Retorna True se o CSV real está disponível (já existia ou foi baixado).
+    Em ambientes como o Streamlit Cloud o arquivo não está versionado, então
+    é baixado da fonte pública (mesmo dataset do Kaggle, espelhado no GitHub).
+    """
+    if os.path.exists(REAL_CSV):
+        return True
+    try:
+        import urllib.request
+
+        os.makedirs(os.path.dirname(REAL_CSV), exist_ok=True)
+        # Baixa para um arquivo temporário e renomeia (download atômico).
+        tmp = REAL_CSV + ".part"
+        urllib.request.urlretrieve(RESULTS_URL, tmp)
+        os.replace(tmp, REAL_CSV)
+        return True
+    except Exception as exc:  # rede indisponível, etc. → cai no mock
+        st.session_state["_download_error"] = str(exc)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +79,8 @@ def load_model():
     from elo_model import build_elo_history
     from feature_engineering import build_team_strengths, create_elo_diff
 
-    if HAS_REAL:
+    has_real = ensure_real_csv()
+    if has_real:
         from data_fetcher import load_kaggle_results, filter_copa_teams, COPA_2026_TEAMS as REAL_TEAMS
         matches_all = load_kaggle_results(REAL_CSV, min_date="2000-01-01")
         matches = filter_copa_teams(matches_all, teams=list(REAL_TEAMS))
@@ -97,7 +122,14 @@ def main():
         f"em {last_date} ({last.competicao})"
     )
     if fonte == "mock":
-        st.warning("CSV real não encontrado. Baixe `results.csv` — veja o README.")
+        err = st.session_state.get("_download_error")
+        if err:
+            st.warning(
+                "Não foi possível baixar o `results.csv` automaticamente "
+                f"(usando dados mock). Detalhe: {err}"
+            )
+        else:
+            st.warning("CSV real não encontrado. Baixe `results.csv` — veja o README.")
 
     # Abas
     tab_pred, tab_odds, tab_rank, tab_dados = st.tabs(
