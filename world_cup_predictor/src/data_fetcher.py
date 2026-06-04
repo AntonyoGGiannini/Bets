@@ -76,71 +76,25 @@ _CONTINENTAL_PATTERNS = re.compile(
 )
 _NATIONS_LEAGUE_PATTERNS = re.compile(r"Nations League", re.IGNORECASE)
 
-# Seleções participantes confirmadas ou prováveis da Copa 2026
-COPA_2026_TEAMS = {
-    # América do Norte / Anfitriões
-    "United States",
-    "Canada",
-    "Mexico",
-    # América do Sul
-    "Brazil",
-    "Argentina",
-    "Uruguay",
-    "Colombia",
-    "Ecuador",
-    "Venezuela",
-    "Chile",
-    "Peru",
-    "Bolivia",
-    # Europa
-    "Germany",
-    "France",
-    "Spain",
-    "England",
-    "Portugal",
-    "Netherlands",
-    "Italy",
-    "Belgium",
-    "Croatia",
-    "Denmark",
-    "Austria",
-    "Switzerland",
-    "Poland",
-    "Serbia",
-    "Turkey",
-    "Czech Republic",
-    "Slovakia",
-    "Hungary",
-    "Scotland",
-    "Ukraine",
-    "Georgia",
-    # África
-    "Morocco",
-    "Senegal",
-    "Egypt",
-    "Nigeria",
-    "Cameroon",
-    "Ghana",
-    "Algeria",
-    "South Africa",
-    "Mali",
-    "Ivory Coast",
-    "Tunisia",
-    "Democratic Republic of Congo",
-    "Tanzania",
-    # Ásia / Oceania
-    "Japan",
-    "South Korea",
-    "Australia",
-    "Saudi Arabia",
-    "Iran",
-    "Qatar",
-    "Indonesia",
-    "Uzbekistan",
-    "Jordan",
-    "Palestine",
-    "New Zealand",
+# Seleções confirmadas da Copa 2026 — 48 times, 12 grupos (A-L)
+# Nomes no formato do dataset Kaggle (inglês).
+COPA_2026_GROUPS = {
+    "A": ["Mexico", "South Africa", "South Korea", "Czech Republic"],
+    "B": ["Canada", "Bosnia and Herzegovina", "Qatar", "Switzerland"],
+    "C": ["Brazil", "Morocco", "Haiti", "Scotland"],
+    "D": ["United States", "Paraguay", "Australia", "Turkey"],
+    "E": ["Germany", "Curaçao", "Ivory Coast", "Ecuador"],
+    "F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
+    "G": ["Belgium", "Egypt", "Iran", "New Zealand"],
+    "H": ["Spain", "Cape Verde", "Saudi Arabia", "Uruguay"],
+    "I": ["France", "Senegal", "Iraq", "Norway"],
+    "J": ["Argentina", "Algeria", "Austria", "Jordan"],
+    "K": ["Portugal", "DR Congo", "Uzbekistan", "Colombia"],
+    "L": ["England", "Croatia", "Ghana", "Panama"],
 }
+
+# Set plano para filtros (filter_copa_teams, etc.)
+COPA_2026_TEAMS = {t for teams in COPA_2026_GROUPS.values() for t in teams}
 
 
 def normalize_competition(tournament: str) -> str:
@@ -273,30 +227,16 @@ def load_odds_footballdata(path: str) -> pd.DataFrame:
 HOSTS_2026 = {"United States", "Mexico", "Canada"}
 
 
-def generate_real_fixtures() -> pd.DataFrame:
-    """Confrontos plausíveis da Copa 2026 com nomes EM INGLÊS.
+def generate_real_fixtures(phase: str = "Grupo") -> pd.DataFrame:
+    """Gera um confronto de abertura por grupo (12 jogos) com nomes em inglês.
 
-    Use esta função (em vez de ``data_loader.generate_mock_fixtures``, que usa
-    nomes em português) quando o histórico vier de dados reais do Kaggle, para
-    que os nomes das seleções batam com os ratings/forças construídos.
-
-    A Copa do Mundo é em campo neutro (``mando_neutro=1``), EXCETO para os
-    anfitriões (EUA, México, Canadá), que mandam seus jogos de grupo em casa.
+    Usa os grupos reais da Copa 2026 (COPA_2026_GROUPS): cada fixture é o
+    primeiro confronto do grupo (posição 0 vs 1). Anfitriões mandam em casa.
     """
-    fixtures = [
-        ("Brazil", "Germany", "Grupo"),
-        ("Argentina", "France", "Grupo"),
-        ("England", "Spain", "Quartas"),
-        ("Portugal", "Netherlands", "Oitavas"),
-        ("Morocco", "Belgium", "Grupo"),
-        ("Mexico", "Japan", "Grupo"),
-        ("Croatia", "Uruguay", "Oitavas"),
-        ("United States", "Senegal", "Grupo"),
-    ]
     base_date = pd.Timestamp("2026-06-11")
     rows = []
-    for i, (a, b, phase) in enumerate(fixtures):
-        # Anfitrião como mandante (fase de grupos) → mando_neutro=0; senão neutro.
+    for i, (group, teams) in enumerate(COPA_2026_GROUPS.items()):
+        a, b = teams[0], teams[1]
         neutro = 0 if (a in HOSTS_2026 and phase == "Grupo") else 1
         rows.append({
             "data_jogo": base_date + pd.Timedelta(days=i),
@@ -304,6 +244,7 @@ def generate_real_fixtures() -> pd.DataFrame:
             "time_b": b,
             "competicao": "World Cup",
             "fase": phase,
+            "grupo": group,
             "mando_neutro": neutro,
         })
     return pd.DataFrame(rows)
