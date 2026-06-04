@@ -19,28 +19,28 @@ import pandas as pd
 import streamlit as st
 
 # ---------------------------------------------------------------------------
-# Constantes
+# Constantes — 48 times reais da Copa 2026, organizados por grupo
 # ---------------------------------------------------------------------------
-COPA_2026_TEAMS = [
-    # UEFA (16)
-    "France", "Spain", "England", "Germany", "Portugal", "Netherlands",
-    "Italy", "Belgium", "Croatia", "Denmark", "Austria", "Switzerland",
-    "Poland", "Serbia", "Turkey", "Scotland",
-    # CONMEBOL (6)
-    "Argentina", "Brazil", "Uruguay", "Colombia", "Ecuador", "Venezuela",
-    # CONCACAF (6)
-    "United States", "Mexico", "Canada", "Panama", "Honduras", "Jamaica",
-    # CAF (9)
-    "Morocco", "Senegal", "Egypt", "Nigeria", "Cameroon", "Ghana",
-    "Algeria", "South Africa", "Mali",
-    # AFC (8)
-    "Japan", "South Korea", "Australia", "Saudi Arabia", "Iran",
-    "Qatar", "Indonesia", "Uzbekistan",
-    # OFC (1)
-    "New Zealand",
-    # Inter-confederações
-    "Costa Rica", "Ukraine",
-]
+COPA_2026_GROUPS = {
+    "A": ["Mexico", "South Africa", "South Korea", "Czech Republic"],
+    "B": ["Canada", "Bosnia and Herzegovina", "Qatar", "Switzerland"],
+    "C": ["Brazil", "Morocco", "Haiti", "Scotland"],
+    "D": ["United States", "Paraguay", "Australia", "Turkey"],
+    "E": ["Germany", "Curaçao", "Ivory Coast", "Ecuador"],
+    "F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
+    "G": ["Belgium", "Egypt", "Iran", "New Zealand"],
+    "H": ["Spain", "Cape Verde", "Saudi Arabia", "Uruguay"],
+    "I": ["France", "Senegal", "Iraq", "Norway"],
+    "J": ["Argentina", "Algeria", "Austria", "Jordan"],
+    "K": ["Portugal", "DR Congo", "Uzbekistan", "Colombia"],
+    "L": ["England", "Croatia", "Ghana", "Panama"],
+}
+
+# Lista plana ordenada por grupo (usada nos dropdowns)
+COPA_2026_TEAMS = [t for teams in COPA_2026_GROUPS.values() for t in teams]
+
+# Mapa inverso time → grupo
+TEAM_GROUP = {t: g for g, teams in COPA_2026_GROUPS.items() for t in teams}
 
 HOSTS = {"United States", "Mexico", "Canada"}
 REAL_CSV = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "raw", "results.csv"))
@@ -56,9 +56,9 @@ def load_model():
     from feature_engineering import build_team_strengths, create_elo_diff
 
     if HAS_REAL:
-        from data_fetcher import load_kaggle_results, filter_copa_teams
+        from data_fetcher import load_kaggle_results, filter_copa_teams, COPA_2026_TEAMS as REAL_TEAMS
         matches_all = load_kaggle_results(REAL_CSV, min_date="2000-01-01")
-        matches = filter_copa_teams(matches_all, teams=COPA_2026_TEAMS)
+        matches = filter_copa_teams(matches_all, teams=list(REAL_TEAMS))
         fonte = "real"
     else:
         import data_loader
@@ -73,8 +73,9 @@ def load_model():
 
 
 def _available(strengths, ratings):
+    """Times da Copa 2026 com histórico, ordenados por grupo e depois por Elo."""
     avail = [t for t in COPA_2026_TEAMS if t in strengths.index]
-    return sorted(avail, key=lambda t: -ratings.get(t, 1500))
+    return sorted(avail, key=lambda t: (TEAM_GROUP.get(t, "Z"), -ratings.get(t, 1500)))
 
 
 # ---------------------------------------------------------------------------
@@ -139,11 +140,11 @@ def _tab_prediction(teams, ratings, strengths):
     with col1:
         idx_a = teams.index("Mexico") if "Mexico" in teams else 0
         time_a = st.selectbox("Time A", teams, index=idx_a, key="pred_a",
-                              format_func=lambda t: f"{t}  (Elo {ratings.get(t,1500):.0f})")
+                              format_func=lambda t: f"[{TEAM_GROUP.get(t,'?')}] {t}  (Elo {ratings.get(t,1500):.0f})")
     with col2:
         idx_b = teams.index("South Africa") if "South Africa" in teams else min(1, len(teams)-1)
         time_b = st.selectbox("Time B", teams, index=idx_b, key="pred_b",
-                              format_func=lambda t: f"{t}  (Elo {ratings.get(t,1500):.0f})")
+                              format_func=lambda t: f"[{TEAM_GROUP.get(t,'?')}] {t}  (Elo {ratings.get(t,1500):.0f})")
     with col3:
         eliminatorio = st.checkbox("Mata-mata", value=False, key="pred_elim")
 
@@ -247,11 +248,11 @@ def _tab_odds(teams, ratings, strengths):
     with col1:
         idx_a = teams.index("Mexico") if "Mexico" in teams else 0
         time_a = st.selectbox("Time A", teams, index=idx_a, key="odds_a",
-                              format_func=lambda t: f"{t}  (Elo {ratings.get(t,1500):.0f})")
+                              format_func=lambda t: f"[{TEAM_GROUP.get(t,'?')}] {t}  (Elo {ratings.get(t,1500):.0f})")
     with col2:
         idx_b = teams.index("South Africa") if "South Africa" in teams else min(1, len(teams)-1)
         time_b = st.selectbox("Time B", teams, index=idx_b, key="odds_b",
-                              format_func=lambda t: f"{t}  (Elo {ratings.get(t,1500):.0f})")
+                              format_func=lambda t: f"[{TEAM_GROUP.get(t,'?')}] {t}  (Elo {ratings.get(t,1500):.0f})")
 
     if time_a == time_b:
         st.warning("Escolha dois times diferentes.")
@@ -308,48 +309,42 @@ def _tab_odds(teams, ratings, strengths):
 def _tab_ranking(teams, ratings, strengths):
     st.subheader("Ranking Elo — Copa 2026 (48 seleções)")
 
-    conf_map = {}
-    for t in ["France","Spain","England","Germany","Portugal","Netherlands",
-              "Italy","Belgium","Croatia","Denmark","Austria","Switzerland",
-              "Poland","Serbia","Turkey","Scotland"]:
-        conf_map[t] = "UEFA"
-    for t in ["Argentina","Brazil","Uruguay","Colombia","Ecuador","Venezuela"]:
-        conf_map[t] = "CONMEBOL"
-    for t in ["United States","Mexico","Canada","Panama","Honduras","Jamaica"]:
-        conf_map[t] = "CONCACAF"
-    for t in ["Morocco","Senegal","Egypt","Nigeria","Cameroon","Ghana",
-              "Algeria","South Africa","Mali"]:
-        conf_map[t] = "CAF"
-    for t in ["Japan","South Korea","Australia","Saudi Arabia","Iran",
-              "Qatar","Indonesia","Uzbekistan"]:
-        conf_map[t] = "AFC"
-    for t in ["New Zealand","Costa Rica","Ukraine"]:
-        conf_map[t] = "OFC/Inter"
-
     rows = []
-    for t in teams:
-        s = strengths.loc[t] if t in strengths.index else None
-        rows.append({
-            "Seleção": t,
-            "Confederação": conf_map.get(t, ""),
-            "Elo": round(ratings.get(t, 1500)),
-            "λ Ataque": round(float(s["forca_ofensiva"]), 2) if s is not None else "-",
-            "λ Defesa": round(float(s["fragilidade_defensiva"]), 2) if s is not None else "-",
-            "Gols marcados (média)": round(float(s["media_gols_marcados"]), 2) if s is not None else "-",
-            "Gols sofridos (média)": round(float(s["media_gols_sofridos"]), 2) if s is not None else "-",
-            "Saldo médio": round(float(s["saldo_medio_gols"]), 2) if s is not None else "-",
-            "Anfitrião": "✓" if t in HOSTS else "",
-        })
+    for group, group_teams in COPA_2026_GROUPS.items():
+        for t in group_teams:
+            s = strengths.loc[t] if t in strengths.index else None
+            rows.append({
+                "Grupo": group,
+                "Seleção": t,
+                "Anfitrião": "✓" if t in HOSTS else "",
+                "Elo": round(ratings.get(t, 1500)),
+                "λ Ataque": round(float(s["forca_ofensiva"]), 2) if s is not None else None,
+                "λ Defesa": round(float(s["fragilidade_defensiva"]), 2) if s is not None else None,
+                "Gols marcados": round(float(s["media_gols_marcados"]), 2) if s is not None else None,
+                "Gols sofridos": round(float(s["media_gols_sofridos"]), 2) if s is not None else None,
+                "Saldo": round(float(s["saldo_medio_gols"]), 2) if s is not None else None,
+            })
 
-    df = pd.DataFrame(rows).reset_index(drop=True)
-    df.index += 1
+    df = pd.DataFrame(rows)
 
-    conf_filter = st.multiselect("Filtrar confederação",
-                                 sorted(df["Confederação"].unique()),
-                                 default=sorted(df["Confederação"].unique()))
-    df_show = df[df["Confederação"].isin(conf_filter)]
-    st.dataframe(df_show.style.background_gradient(subset=["Elo"], cmap="Greens"),
-                 use_container_width=True)
+    view = st.radio("Visualização", ["Por grupo", "Por Elo (ranking geral)"],
+                    horizontal=True)
+
+    group_filter = st.multiselect(
+        "Filtrar grupo", list(COPA_2026_GROUPS.keys()),
+        default=list(COPA_2026_GROUPS.keys()),
+    )
+    df_show = df[df["Grupo"].isin(group_filter)]
+
+    if view == "Por Elo (ranking geral)":
+        df_show = df_show.sort_values("Elo", ascending=False).reset_index(drop=True)
+        df_show.index += 1
+
+    st.dataframe(
+        df_show.style.background_gradient(subset=["Elo"], cmap="Greens"),
+        use_container_width=True,
+        hide_index=(view == "Por grupo"),
+    )
 
 
 # ---------------------------------------------------------------------------
