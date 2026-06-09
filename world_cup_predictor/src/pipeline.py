@@ -33,6 +33,7 @@ from goal_model import (
 )
 from monte_carlo import simulate_match
 from odds_analysis import analyze_fixture_odds
+from corner_model import estimate_corner_mus_for_fixture, corner_total_probabilities
 
 OUTPUTS_DIR = os.path.join(os.path.dirname(__file__), "..", "outputs")
 
@@ -93,6 +94,20 @@ def run_pipeline(
         matrix = calculate_score_matrix(lambda_a, lambda_b, max_goals=max_goals)
         poisson_probs = probabilities_from_matrix(matrix)
 
+        # Previsão de escanteios.
+        try:
+            mu_c_a, mu_c_b = estimate_corner_mus_for_fixture(
+                row.time_a,
+                row.time_b,
+                strengths,
+                diferenca_elo=float(row.diferenca_elo),
+                jogo_eliminatorio=int(row.jogo_eliminatorio),
+                mando_neutro=int(getattr(row, "mando_neutro", 1)),
+            )
+            corner_probs = corner_total_probabilities(mu_c_a, mu_c_b)
+        except KeyError:
+            corner_probs = {}
+
         # Verificação cruzada via Monte Carlo. Seed determinístico pelo índice
         # do confronto — reprodutível entre processos (hash() de strings é
         # salgado por processo e não serve como seed estável).
@@ -112,6 +127,13 @@ def run_pipeline(
             "prob_under_2_5": round(poisson_probs["prob_under_2_5"], 4),
             "prob_ambos_marcam": round(poisson_probs["prob_ambos_marcam"], 4),
             "placar_mais_provavel": poisson_probs["placar_mais_provavel"],
+            "mu_escanteios_time_a": corner_probs.get("mu_time_a"),
+            "mu_escanteios_time_b": corner_probs.get("mu_time_b"),
+            "mu_escanteios_total": corner_probs.get("mu_total"),
+            "prob_escanteios_over_9_5": corner_probs.get("prob_over_9_5"),
+            "prob_escanteios_over_10_5": corner_probs.get("prob_over_10_5"),
+            "prob_escanteios_over_11_5": corner_probs.get("prob_over_11_5"),
+            "linha_asiatica_escanteios": corner_probs.get("linha_asiatica_escanteios"),
         })
 
         sim_rows.append({

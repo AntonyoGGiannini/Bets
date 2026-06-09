@@ -190,6 +190,7 @@ def main():
 def _tab_prediction(teams, ratings, strengths):
     from goal_model import estimate_lambdas_for_fixture, calculate_score_matrix, probabilities_from_matrix
     from monte_carlo import simulate_match
+    from corner_model import estimate_corner_mus_for_fixture, corner_total_probabilities
 
     col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
@@ -278,6 +279,65 @@ def _tab_prediction(teams, ratings, strengths):
         }
         mkt_df = pd.DataFrame({"Mercado": mkt.keys(), "Probabilidade": [f"{v*100:.1f}%" for v in mkt.values()]})
         st.dataframe(mkt_df, hide_index=True, use_container_width=True)
+
+    # Mercados de escanteios
+    with st.expander("⛳ Mercados de Escanteios (Poisson)"):
+        st.caption(
+            "Modelo Poisson calibrado sobre médias internacionais (~10.3 escanteios/jogo). "
+            "Quando dados históricos de escanteios não estiverem disponíveis, "
+            "o modelo usa apenas o ajuste de Elo como diferencial entre os times."
+        )
+        try:
+            mu_c_a, mu_c_b = estimate_corner_mus_for_fixture(
+                time_a, time_b, strengths,
+                diferenca_elo=diff_elo,
+                jogo_eliminatorio=int(eliminatorio),
+                mando_neutro=mando_neutro,
+            )
+            cp = corner_total_probabilities(mu_c_a, mu_c_b)
+
+            cc1, cc2, cc3 = st.columns(3)
+            cc1.metric(f"μ Escanteios {time_a}", f"{cp['mu_time_a']:.1f}")
+            cc2.metric(f"μ Escanteios {time_b}", f"{cp['mu_time_b']:.1f}")
+            cc3.metric("μ Total Escanteios", f"{cp['mu_total']:.1f}")
+
+            ou_data = {
+                "Linha": ["8.5", "9.5", "10.5", "11.5", "12.5"],
+                "Over %": [
+                    f"{cp['prob_over_8_5']*100:.1f}%",
+                    f"{cp['prob_over_9_5']*100:.1f}%",
+                    f"{cp['prob_over_10_5']*100:.1f}%",
+                    f"{cp['prob_over_11_5']*100:.1f}%",
+                    f"{cp['prob_over_12_5']*100:.1f}%",
+                ],
+                "Under %": [
+                    f"{cp['prob_under_8_5']*100:.1f}%",
+                    f"{cp['prob_under_9_5']*100:.1f}%",
+                    f"{cp['prob_under_10_5']*100:.1f}%",
+                    f"{cp['prob_under_11_5']*100:.1f}%",
+                    f"{cp['prob_under_12_5']*100:.1f}%",
+                ],
+            }
+            st.dataframe(pd.DataFrame(ou_data), hide_index=True, use_container_width=True)
+
+            sc1, sc2, sc3 = st.columns(3)
+            sc1.metric(f"{time_a} Over 4.5 corners",
+                       f"{cp['prob_escanteios_time_a_over_4_5']*100:.1f}%")
+            sc2.metric(f"{time_b} Over 4.5 corners",
+                       f"{cp['prob_escanteios_time_b_over_4_5']*100:.1f}%")
+            sc3.metric("Linha Asiática", f"{cp['linha_asiatica_escanteios']:+.1f}",
+                       help="Handicap de escanteios do Time A vs Time B")
+
+            sd1, sd2, sd3 = st.columns(3)
+            sd1.metric(f"Mais corners: {time_a}",
+                       f"{cp['spread_a_vence_escanteios']*100:.1f}%")
+            sd2.metric("Igual corners",
+                       f"{cp['spread_empate_escanteios']*100:.1f}%")
+            sd3.metric(f"Mais corners: {time_b}",
+                       f"{cp['spread_b_vence_escanteios']*100:.1f}%")
+
+        except Exception as exc:
+            st.warning(f"Previsão de escanteios indisponível: {exc}")
 
     # Matriz de placares
     st.subheader("Matriz de placares (%)")
