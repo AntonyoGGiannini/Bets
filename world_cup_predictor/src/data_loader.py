@@ -124,6 +124,16 @@ def generate_mock_matches(
         goals_a = int(rng.poisson(lambda_a))
         goals_b = int(rng.poisson(lambda_b))
 
+        # Escanteios mock: times mais ofensivos geram mais corners; defesas
+        # fortes concedem menos. Baseline ~5.15 por time (~10.3 total).
+        corner_base = 5.15
+        c_att_a = 1.0 + 0.15 * (strength_a - 1.3)
+        c_def_b = max(0.5, 1.0 - 0.10 * (strength_b - 1.3))
+        c_att_b = 1.0 + 0.15 * (strength_b - 1.3)
+        c_def_a = max(0.5, 1.0 - 0.10 * (strength_a - 1.3))
+        corners_a = int(rng.poisson(max(1.5, corner_base * c_att_a * c_def_b)))
+        corners_b = int(rng.poisson(max(1.5, corner_base * c_att_b * c_def_a)))
+
         match_date = base_date + pd.Timedelta(days=int(i * 2 + rng.integers(0, 2)))
 
         rows.append(
@@ -133,6 +143,8 @@ def generate_mock_matches(
                 "time_b": team_b,
                 "gols_time_a": goals_a,
                 "gols_time_b": goals_b,
+                "escanteios_time_a": corners_a,
+                "escanteios_time_b": corners_b,
                 "competicao": competition,
                 "fase": phase,
                 "mando_neutro": int(neutral),

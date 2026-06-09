@@ -76,6 +76,11 @@ def _team_long_format(matches: pd.DataFrame) -> pd.DataFrame:
     base_cols = ["data_jogo", "competicao"]
     has_elo = "elo_time_a" in matches.columns and "elo_time_b" in matches.columns
 
+    has_corners = (
+        "escanteios_time_a" in matches.columns
+        and "escanteios_time_b" in matches.columns
+    )
+
     a = pd.DataFrame({
         "data_jogo": matches["data_jogo"],
         "competicao": matches.get("competicao", "Friendly"),
@@ -84,6 +89,8 @@ def _team_long_format(matches: pd.DataFrame) -> pd.DataFrame:
         "gols_marcados": matches["gols_time_a"],
         "gols_sofridos": matches["gols_time_b"],
         "elo_adversario": matches["elo_time_b"] if has_elo else DEFAULT_ELO,
+        "escanteios_marcados": matches["escanteios_time_a"].values if has_corners else np.nan,
+        "escanteios_sofridos": matches["escanteios_time_b"].values if has_corners else np.nan,
     })
     b = pd.DataFrame({
         "data_jogo": matches["data_jogo"],
@@ -93,6 +100,8 @@ def _team_long_format(matches: pd.DataFrame) -> pd.DataFrame:
         "gols_marcados": matches["gols_time_b"],
         "gols_sofridos": matches["gols_time_a"],
         "elo_adversario": matches["elo_time_a"] if has_elo else DEFAULT_ELO,
+        "escanteios_marcados": matches["escanteios_time_b"].values if has_corners else np.nan,
+        "escanteios_sofridos": matches["escanteios_time_a"].values if has_corners else np.nan,
     })
     long = pd.concat([a, b], ignore_index=True)
     return long.sort_values("data_jogo").reset_index(drop=True)
@@ -158,6 +167,102 @@ def build_team_strengths(
             "elo_medio_adversarios": mean_opp_elo,
             "forca_ofensiva": max(0.2, forca_ofensiva),
             "fragilidade_defensiva": max(0.2, fragilidade_defensiva),
+        })
+
+    df_strengths = pd.DataFrame(records).set_index("time")
+
+    # Merge corner strengths: taxa_escanteio_ataque/defesa + médias.
+    corner_cols = [
+        "taxa_escanteio_ataque",
+        "taxa_escanteio_defesa",
+        "media_escanteios_marcados",
+        "media_escanteios_sofridos",
+    ]
+    corner_strengths = build_corner_strengths(matches, ratings, n_games)
+    df_strengths = df_strengths.join(corner_strengths[corner_cols], how="left")
+    df_strengths["taxa_escanteio_ataque"] = df_strengths["taxa_escanteio_ataque"].fillna(1.0)
+    df_strengths["taxa_escanteio_defesa"] = df_strengths["taxa_escanteio_defesa"].fillna(1.0)
+    df_strengths["media_escanteios_marcados"] = df_strengths["media_escanteios_marcados"].fillna(5.15)
+    df_strengths["media_escanteios_sofridos"] = df_strengths["media_escanteios_sofridos"].fillna(5.15)
+    return df_strengths
+
+
+def build_corner_strengths(
+    matches: pd.DataFrame,
+    ratings: Dict[str, float],
+    n_games: int = 10,
+    league_avg_corners: float = 5.15,
+) -> pd.DataFrame:
+    """Resume a taxa de escanteios de cada seleção nos últimos n_games jogos.
+
+    Quando escanteios_time_a/b estão ausentes do DataFrame (ex.: dados Kaggle
+    reais), retorna taxas = 1.0 para todos os times como fallback — as
+    previsões usarão apenas o ajuste de Elo.
+
+    Returns
+    -------
+    pandas.DataFrame indexado por time, colunas:
+        taxa_escanteio_ataque   (escanteios gerados / media_liga)
+        taxa_escanteio_defesa   (escanteios concedidos / media_liga)
+        media_escanteios_marcados
+        media_escanteios_sofridos
+    """
+    has_corners = (
+        "escanteios_time_a" in matches.columns
+        and "escanteios_time_b" in matches.columns
+    )
+
+    if not has_corners:
+        teams = sorted(set(matches["time_a"]).union(set(matches["time_b"])))
+        records = [
+            {
+                "time": t,
+                "taxa_escanteio_ataque": 1.0,
+                "taxa_escanteio_defesa": 1.0,
+                "media_escanteios_marcados": league_avg_corners,
+                "media_escanteios_sofridos": league_avg_corners,
+            }
+            for t in teams
+        ]
+        return pd.DataFrame(records).set_index("time")
+
+    long = _team_long_format(matches)
+    avg_elo = float(np.mean(list(ratings.values()))) if ratings else DEFAULT_ELO
+
+    records = []
+    for team, grp in long.groupby("time"):
+        recent = grp.tail(n_games)
+        if recent.empty:
+            continue
+
+        n = len(recent)
+        recency = np.linspace(0.5, 1.0, n)
+        comp_w = recent["competicao"].map(COMPETITION_FORM_WEIGHT).fillna(1.0).to_numpy()
+        weights = recency * comp_w
+        weights = weights / weights.sum()
+
+        cm = float(np.dot(
+            recent["escanteios_marcados"].fillna(league_avg_corners).to_numpy(),
+            weights,
+        ))
+        cs = float(np.dot(
+            recent["escanteios_sofridos"].fillna(league_avg_corners).to_numpy(),
+            weights,
+        ))
+
+        mean_opp_elo = float(recent["elo_adversario"].mean())
+        opp_factor = 1.0 + (mean_opp_elo - avg_elo) / 400.0
+        opp_factor = float(np.clip(opp_factor, 0.7, 1.3))
+
+        taxa_ataque = (cm / league_avg_corners) * opp_factor
+        taxa_defesa = (cs / league_avg_corners) / opp_factor
+
+        records.append({
+            "time": team,
+            "taxa_escanteio_ataque": max(0.3, taxa_ataque),
+            "taxa_escanteio_defesa": max(0.3, taxa_defesa),
+            "media_escanteios_marcados": cm,
+            "media_escanteios_sofridos": cs,
         })
 
     return pd.DataFrame(records).set_index("time")
