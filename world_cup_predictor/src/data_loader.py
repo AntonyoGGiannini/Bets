@@ -125,8 +125,9 @@ def generate_mock_matches(
         goals_b = int(rng.poisson(lambda_b))
 
         # Escanteios mock: times mais ofensivos geram mais corners; defesas
-        # fortes concedem menos. Baseline ~5.15 por time (~10.3 total).
-        corner_base = 5.15
+        # fortes concedem menos. Baseline calibrado com dados reais:
+        # WC2018(4.73) + WC2022(4.45) média ponderada → 4.61/time (~9.2 total).
+        corner_base = 4.61
         c_att_a = 1.0 + 0.15 * (strength_a - 1.3)
         c_def_b = max(0.5, 1.0 - 0.10 * (strength_b - 1.3))
         c_att_b = 1.0 + 0.15 * (strength_b - 1.3)

@@ -182,8 +182,8 @@ def build_team_strengths(
     df_strengths = df_strengths.join(corner_strengths[corner_cols], how="left")
     df_strengths["taxa_escanteio_ataque"] = df_strengths["taxa_escanteio_ataque"].fillna(1.0)
     df_strengths["taxa_escanteio_defesa"] = df_strengths["taxa_escanteio_defesa"].fillna(1.0)
-    df_strengths["media_escanteios_marcados"] = df_strengths["media_escanteios_marcados"].fillna(5.15)
-    df_strengths["media_escanteios_sofridos"] = df_strengths["media_escanteios_sofridos"].fillna(5.15)
+    df_strengths["media_escanteios_marcados"] = df_strengths["media_escanteios_marcados"].fillna(4.61)
+    df_strengths["media_escanteios_sofridos"] = df_strengths["media_escanteios_sofridos"].fillna(4.61)
     return df_strengths
 
 
@@ -191,7 +191,7 @@ def build_corner_strengths(
     matches: pd.DataFrame,
     ratings: Dict[str, float],
     n_games: int = 10,
-    league_avg_corners: float = 5.15,
+    league_avg_corners: float = 4.61,
 ) -> pd.DataFrame:
     """Resume a taxa de escanteios de cada seleção nos últimos n_games jogos.
 
