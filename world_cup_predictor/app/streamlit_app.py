@@ -545,6 +545,13 @@ def _run_tournament(_ratings, _strengths, n_sims: int, seed: int, cache_key: str
     from collections import Counter
     import simulate_tournament_2026 as sim
 
+    # No Streamlit Cloud o re-deploy reexecuta o script mas pode manter módulos
+    # importados em cache no ``sys.modules`` — se a versão carregada for
+    # anterior (sem ``ROUND_BY_SIZE``/``simulate_once_detailed``), recarrega.
+    if not hasattr(sim, "simulate_once_detailed"):
+        import importlib
+        sim = importlib.reload(sim)
+
     teams = [t for t in COPA_2026_TEAMS if t in _strengths.index]
     cache, cache_ko = sim.make_lambda_cache(teams, _ratings, _strengths)
 
