@@ -68,21 +68,42 @@ def play(rng, la, lb):
     return rng.poisson(la), rng.poisson(lb)
 
 
-def knockout_winner(rng, a, b, cache_ko):
+# Nome da fase pelo nº de times ainda no bracket (formato 2026: KO de 32).
+ROUND_BY_SIZE = {32: "16-avos", 16: "Oitavas", 8: "Quartas", 4: "Semifinal", 2: "Final"}
+
+
+def knockout_match(rng, a, b, cache_ko):
+    """Joga um mata-mata e devolve (vencedor, gols_a, gols_b)."""
     la, lb = cache_ko[(a, b)]
     ga, gb = play(rng, la, lb)
     if ga > gb:
-        return a
+        return a, ga, gb
     if gb > ga:
-        return b
+        return b, ga, gb
     # empate -> pênaltis (50/50 levemente ponderado pelo lambda)
     p = la / (la + lb) if (la + lb) > 0 else 0.5
-    return a if rng.random() < p else b
+    return (a if rng.random() < p else b), ga, gb
 
 
-def simulate_once(rng, ratings, cache, cache_ko):
+def knockout_winner(rng, a, b, cache_ko):
+    return knockout_match(rng, a, b, cache_ko)[0]
+
+
+def simulate_once_detailed(rng, ratings, cache, cache_ko):
+    """Simula um torneio completo e devolve os detalhes da edição.
+
+    Returns
+    -------
+    dict
+        ``champion``, ``pos1``/``pos2`` (grupo -> time), ``third_qualified``
+        (8 melhores terceiros), ``rounds`` (fase -> lista de
+        ``(time_a, time_b, vencedor)``) e ``goals`` (gols marcados por time
+        na edição, grupos + mata-mata).
+    """
     third_place = []  # (group, team, pts, gd, gf)
     qualified_1_2 = {}  # group -> [winner, runner_up]
+    goals = defaultdict(int)
+    pos1, pos2 = {}, {}
 
     for group, teams in COPA_2026_GROUPS.items():
         pts = defaultdict(int)
@@ -96,6 +117,7 @@ def simulate_once(rng, ratings, cache, cache_ko):
                 xa, xb = play(rng, la, lb)
                 gf[a] += xa; ga[a] += xb
                 gf[b] += xb; ga[b] += xa
+                goals[a] += xa; goals[b] += xb
                 if xa > xb:
                     pts[a] += 3
                 elif xb > xa:
@@ -109,6 +131,7 @@ def simulate_once(rng, ratings, cache, cache_ko):
             reverse=True,
         )
         qualified_1_2[group] = [table[0], table[1]]
+        pos1[group], pos2[group] = table[0], table[1]
         t3 = table[2]
         third_place.append((group, t3, pts[t3], gf[t3] - ga[t3], gf[t3]))
 
@@ -128,16 +151,35 @@ def simulate_once(rng, ratings, cache, cache_ko):
 
     seeded = sorted(qualifiers, key=lambda t: ratings.get(t), reverse=True)
     # bracket 1v32, 2v31, ... mantendo favoritos separados
+    rounds = {}
     bracket = seeded[:]
     while len(bracket) > 1:
         nxt = []
         n = len(bracket)
+        matches = []
         for i in range(n // 2):
             a = bracket[i]
             b = bracket[n - 1 - i]
-            nxt.append(knockout_winner(rng, a, b, cache_ko))
+            w, xa, xb = knockout_match(rng, a, b, cache_ko)
+            goals[a] += xa; goals[b] += xb
+            matches.append((a, b, w))
+            nxt.append(w)
+        rounds[ROUND_BY_SIZE[n]] = matches
         bracket = nxt
-    return bracket[0]
+
+    return {
+        "champion": bracket[0],
+        "pos1": pos1,
+        "pos2": pos2,
+        "third_qualified": best_thirds,
+        "rounds": rounds,
+        "goals": dict(goals),
+    }
+
+
+def simulate_once(rng, ratings, cache, cache_ko):
+    """Compatível com a V1: devolve apenas o campeão da edição simulada."""
+    return simulate_once_detailed(rng, ratings, cache, cache_ko)["champion"]
 
 
 def main(n=2000):

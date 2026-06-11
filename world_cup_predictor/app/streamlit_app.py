@@ -529,25 +529,82 @@ def _tab_all_games(ratings, strengths):
 # ---------------------------------------------------------------------------
 @st.cache_data(show_spinner="Simulando a Copa 2026 (grupos → mata-mata)...")
 def _run_tournament(_ratings, _strengths, n_sims: int, seed: int, cache_key: str):
-    """Roda ``n_sims`` torneios completos e devolve a contagem de títulos.
+    """Roda ``n_sims`` torneios completos e agrega as estatísticas.
 
     ``_ratings``/``_strengths`` têm o prefixo ``_`` para o Streamlit não tentar
     fazer hash deles; o ``cache_key`` (fonte dos dados) entra na chave do cache
     para invalidar quando o dataset muda. Reutiliza as funções de
     ``simulate_tournament_2026`` para não duplicar a lógica do bracket.
+
+    Returns
+    -------
+    dict (picklável, p/ o cache do Streamlit) com Counters de: títulos,
+    1º/2º por grupo, terceiros classificados, fase alcançada por seleção,
+    confrontos por fase, finais e soma de gols por seleção.
     """
-    from collections import defaultdict
+    from collections import Counter
     import simulate_tournament_2026 as sim
 
     teams = [t for t in COPA_2026_TEAMS if t in _strengths.index]
     cache, cache_ko = sim.make_lambda_cache(teams, _ratings, _strengths)
 
     rng = np.random.default_rng(seed)
-    champs = defaultdict(int)
-    for _ in range(n_sims):
-        champs[sim.simulate_once(rng, _ratings, cache, cache_ko)] += 1
+    champion = Counter()
+    pos1 = Counter()           # (grupo, time)
+    pos2 = Counter()           # (grupo, time)
+    third_q = Counter()        # time classificado como melhor 3º
+    reached = {r: Counter() for r in sim.ROUND_BY_SIZE.values()}
+    matchups = {r: Counter() for r in sim.ROUND_BY_SIZE.values()}  # par ordenado por Elo
+    goals_sum = Counter()
 
-    return pd.Series(champs, dtype="int64").sort_values(ascending=False)
+    for _ in range(n_sims):
+        d = sim.simulate_once_detailed(rng, _ratings, cache, cache_ko)
+        champion[d["champion"]] += 1
+        for g, t in d["pos1"].items():
+            pos1[(g, t)] += 1
+        for g, t in d["pos2"].items():
+            pos2[(g, t)] += 1
+        for t in d["third_qualified"]:
+            third_q[t] += 1
+        for rnd, matches in d["rounds"].items():
+            for a, b, _w in matches:
+                reached[rnd][a] += 1
+                reached[rnd][b] += 1
+                matchups[rnd][(a, b)] += 1
+        for t, g in d["goals"].items():
+            goals_sum[t] += g
+
+    return {
+        "n": n_sims,
+        "champion": dict(champion),
+        "pos1": dict(pos1),
+        "pos2": dict(pos2),
+        "third_q": dict(third_q),
+        "reached": {r: dict(c) for r, c in reached.items()},
+        "matchups": {r: dict(c) for r, c in matchups.items()},
+        "goals_sum": dict(goals_sum),
+    }
+
+
+@st.cache_data(show_spinner="Baixando dados de artilheiros (goalscorers.csv)...")
+def ensure_goalscorers_csv() -> bool:
+    """Garante o goalscorers.csv local (mesma fonte do results.csv)."""
+    import top_scorer
+    if os.path.exists(top_scorer.GOALSCORERS_CSV):
+        return True
+    try:
+        import urllib.request
+        os.makedirs(os.path.dirname(top_scorer.GOALSCORERS_CSV), exist_ok=True)
+        tmp = top_scorer.GOALSCORERS_CSV + ".part"
+        urllib.request.urlretrieve(
+            "https://raw.githubusercontent.com/martj42/international_results/master/goalscorers.csv",
+            tmp,
+        )
+        os.replace(tmp, top_scorer.GOALSCORERS_CSV)
+        return True
+    except Exception as exc:
+        st.session_state["_goalscorers_error"] = str(exc)
+        return False
 
 
 def _tab_simulacao(ratings, strengths, fonte):
@@ -606,9 +663,12 @@ def _tab_simulacao(ratings, strengths, fonte):
         st.info("Ajuste os parâmetros e clique em **Simular torneio**.")
         return
 
-    champs = _run_tournament(ratings, strengths, int(n_sims), int(seed), fonte)
-    total = int(champs.sum())
-    prob = (champs / total * 100)
+    agg = _run_tournament(ratings, strengths, int(n_sims), int(seed), fonte)
+    n = agg["n"]
+
+    # ----- 🏆 Campeã ---------------------------------------------------------
+    champs = pd.Series(agg["champion"]).sort_values(ascending=False)
+    prob = champs / n * 100
 
     df = pd.DataFrame({
         "Seleção": prob.index,
@@ -622,27 +682,159 @@ def _tab_simulacao(ratings, strengths, fonte):
     campea = df.iloc[0]
     st.success(
         f"🏆 Campeã mais provável: **{campea['Seleção']}** "
-        f"({campea['Prob. título %']:.1f}% dos {total:,} torneios simulados)"
+        f"({campea['Prob. título %']:.1f}% dos {n:,} torneios simulados)"
     )
 
     ctop = st.columns(min(5, len(df)))
     for col, (_, r) in zip(ctop, df.head(5).iterrows()):
         col.metric(r["Seleção"], f"{r['Prob. título %']:.1f}%", help=f"Elo {r['Elo']}")
 
-    st.markdown("**Probabilidade de título por seleção**")
+    with st.expander("Probabilidade de título por seleção (tabela completa)"):
+        st.dataframe(
+            df.head(20).style.background_gradient(subset=["Prob. título %"], cmap="Greens"),
+            use_container_width=True,
+        )
+        st.bar_chart(df.head(12).set_index("Seleção")["Prob. título %"])
+        st.download_button(
+            "⬇️ Baixar probabilidades de título (CSV)",
+            df.to_csv(index=False).encode("utf-8"),
+            file_name="copa2026_prob_titulo.csv", mime="text/csv",
+        )
+
+    # ----- 📋 Classificados por grupo (1º e 2º) ------------------------------
+    st.markdown("##### 📋 Classificados mais prováveis por grupo")
+    pos1, pos2 = agg["pos1"], agg["pos2"]
+    group_rows = []
+    for g, gteams in COPA_2026_GROUPS.items():
+        p1 = {t: pos1.get((g, t), 0) for t in gteams}
+        t1 = max(p1, key=p1.get)
+        # Exclui o 1º escolhido: em grupos equilibrados o mesmo time pode ser
+        # o mais frequente nas duas posições, o que confundiria a tabela.
+        p2 = {t: pos2.get((g, t), 0) for t in gteams if t != t1}
+        t2 = max(p2, key=p2.get)
+        # 3º com melhor chance de avançar (exclui os mais prováveis 1º/2º)
+        cand3 = {t: agg["third_q"].get(t, 0) for t in gteams if t not in (t1, t2)}
+        t3 = max(cand3, key=cand3.get) if cand3 else "—"
+        group_rows.append({
+            "Grupo": g,
+            "1º lugar": f"{t1} ({p1[t1]/n*100:.0f}%)",
+            "2º lugar": f"{t2} ({p2[t2]/n*100:.0f}%)",
+            "3º com chance": f"{t3} (avança {cand3.get(t3, 0)/n*100:.0f}%)" if cand3 else "—",
+        })
+    st.dataframe(pd.DataFrame(group_rows), hide_index=True, use_container_width=True)
+    st.caption("Entre parênteses: % das simulações em que a seleção terminou naquela posição "
+               "(ou, para o 3º, avançou entre os 8 melhores terceiros).")
+
+    # ----- 🥉 Melhores terceiros ---------------------------------------------
+    st.markdown("##### 🥉 Melhores terceiros — quem avança com mais frequência")
+    thirds = pd.Series(agg["third_q"]).sort_values(ascending=False).head(12)
+    thirds_df = pd.DataFrame({
+        "Seleção": thirds.index,
+        "Grupo": [TEAM_GROUP.get(t, "?") for t in thirds.index],
+        "Avança como 3º (%)": (thirds / n * 100).round(1).values,
+    })
     st.dataframe(
-        df.head(20).style.background_gradient(subset=["Prob. título %"], cmap="Greens"),
-        use_container_width=True,
+        thirds_df.style.background_gradient(subset=["Avança como 3º (%)"], cmap="Oranges"),
+        hide_index=True, use_container_width=True,
+    )
+    st.caption("Os 8 primeiros desta lista são, em média, os melhores terceiros do formato 2026.")
+
+    # ----- 🏟️ Confrontos por fase --------------------------------------------
+    st.markdown("##### 🏟️ Confrontos mais prováveis por fase")
+    st.caption(
+        "O chaveamento varia a cada simulação (depende de quem se classifica e do "
+        "seeding por Elo) — abaixo, os confrontos **mais frequentes** em cada fase "
+        "e a % das simulações em que aconteceram."
+    )
+    round_order = ["16-avos", "Oitavas", "Quartas", "Semifinal", "Final"]
+    n_show = {"16-avos": 16, "Oitavas": 8, "Quartas": 6, "Semifinal": 4, "Final": 5}
+    rotulo = {
+        "16-avos": "16-avos de final (32 seleções)",
+        "Oitavas": "Oitavas de final (16)",
+        "Quartas": "Quartas de final (8)",
+        "Semifinal": "Semifinais (4)",
+        "Final": "Final",
+    }
+    for rnd in round_order:
+        mu = agg["matchups"].get(rnd, {})
+        if not mu:
+            continue
+        top_mu = sorted(mu.items(), key=lambda kv: -kv[1])[: n_show[rnd]]
+        rows = [{
+            "Confronto": f"{a}  ×  {b}",
+            "Frequência (%)": round(c / n * 100, 1),
+        } for (a, b), c in top_mu]
+        with st.expander(f"⚔️ {rotulo[rnd]}", expanded=(rnd == "Final")):
+            st.dataframe(
+                pd.DataFrame(rows).style.background_gradient(
+                    subset=["Frequência (%)"], cmap="Blues",
+                ),
+                hide_index=True, use_container_width=True,
+            )
+
+    # ----- 📶 Quão longe cada seleção chega ----------------------------------
+    st.markdown("##### 📶 Probabilidade de alcançar cada fase")
+    reach_rows = []
+    teams_sorted = sorted(teams, key=lambda t: -agg["champion"].get(t, 0))
+    for t in teams_sorted[:20]:
+        reach_rows.append({
+            "Seleção": t,
+            "Mata-mata %": round(agg["reached"]["16-avos"].get(t, 0) / n * 100, 1),
+            "Oitavas %":   round(agg["reached"]["Oitavas"].get(t, 0) / n * 100, 1),
+            "Quartas %":   round(agg["reached"]["Quartas"].get(t, 0) / n * 100, 1),
+            "Semi %":      round(agg["reached"]["Semifinal"].get(t, 0) / n * 100, 1),
+            "Final %":     round(agg["reached"]["Final"].get(t, 0) / n * 100, 1),
+            "Título %":    round(agg["champion"].get(t, 0) / n * 100, 1),
+        })
+    reach_df = pd.DataFrame(reach_rows)
+    st.dataframe(
+        reach_df.style.background_gradient(
+            subset=["Mata-mata %", "Oitavas %", "Quartas %", "Semi %", "Final %", "Título %"],
+            cmap="Greens",
+        ),
+        hide_index=True, use_container_width=True,
     )
 
-    chart_df = df.head(12).set_index("Seleção")["Prob. título %"]
-    st.bar_chart(chart_df)
+    # ----- 🥇 Artilheiro ------------------------------------------------------
+    st.markdown("##### 🥇 Candidatos a artilheiro")
+    if not ensure_goalscorers_csv():
+        st.warning(
+            "Não foi possível baixar o `goalscorers.csv` "
+            f"({st.session_state.get('_goalscorers_error', 'erro desconhecido')}). "
+            "Sem ele a previsão de artilheiro fica indisponível."
+        )
+    else:
+        try:
+            import top_scorer
+            team_xg = {t: g / n for t, g in agg["goals_sum"].items()}
+            scorers = top_scorer.expected_top_scorers(team_xg, top=12)
+            sc_df = pd.DataFrame({
+                "Jogador": scorers["jogador"],
+                "Seleção": scorers["time"],
+                f"Gols desde {top_scorer.DEFAULT_MIN_DATE[:4]}": scorers["gols_janela"],
+                "Fatia dos gols do time (%)": (scorers["fatia"] * 100).round(1),
+                "Gols do time na Copa (esp.)": scorers["gols_esperados_time"].round(1),
+                "Gols esperados na Copa": scorers["gols_esperados_copa"].round(2),
+            })
+            artilheiro = sc_df.iloc[0]
+            st.success(
+                f"🥇 Artilheiro mais provável: **{artilheiro['Jogador']}** "
+                f"({artilheiro['Seleção']}) — {artilheiro['Gols esperados na Copa']:.2f} "
+                "gols esperados"
+            )
+            st.dataframe(
+                sc_df.style.background_gradient(subset=["Gols esperados na Copa"], cmap="Reds"),
+                hide_index=True, use_container_width=True,
+            )
+            st.caption(
+                "Gols esperados = fatia do jogador nos gols da seleção no ciclo atual "
+                "× gols esperados da seleção por edição simulada (times que vão mais "
+                "longe jogam mais). **Não considera** escalações, minutos, lesões nem "
+                "aposentadorias — é um proxy estatístico, não uma escalação."
+            )
+        except Exception as exc:
+            st.warning(f"Previsão de artilheiro indisponível: {exc}")
 
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "⬇️ Baixar probabilidades de título (CSV)", csv,
-        file_name="copa2026_prob_titulo.csv", mime="text/csv",
-    )
     st.caption(
         "Nenhum favorito costuma passar de ~25% — futebol de seleção é de alta "
         "variância. 'Campeã provável' = a aposta menos arriscada, não uma certeza."
