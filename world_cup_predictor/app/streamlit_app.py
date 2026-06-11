@@ -571,11 +571,21 @@ def _tab_simulacao(ratings, strengths, fonte):
 
     teams = [t for t in COPA_2026_TEAMS if t in strengths.index]
     faltando = [t for t in COPA_2026_TEAMS if t not in strengths.index]
-    if len(teams) < len(COPA_2026_TEAMS):
-        st.warning(
-            f"{len(faltando)} seleção(ões) sem histórico suficiente "
-            f"({', '.join(faltando)}) — ficam de fora da simulação."
+    if faltando:
+        # A simulação do torneio inteiro precisa dos 12 grupos completos (48
+        # seleções). Com algum time sem histórico (ex.: base mock) o bracket
+        # ficaria distorcido e ``simulate_once`` quebraria ao indexar um
+        # confronto ausente — então bloqueamos com uma mensagem clara em vez
+        # de avisar e estourar um KeyError ao clicar em "Simular torneio".
+        st.error(
+            f"⚠️ Simulação indisponível: {len(faltando)} seleção(ões) sem "
+            f"histórico suficiente ({', '.join(faltando)}).\n\n"
+            "A simulação completa do torneio exige as **48 seleções** com "
+            "histórico (todos os 12 grupos cheios), o que acontece com os "
+            "**dados reais**. Verifique se o `results.csv` foi carregado "
+            "(veja a aba **🗃️ Dados**)."
         )
+        return
 
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
