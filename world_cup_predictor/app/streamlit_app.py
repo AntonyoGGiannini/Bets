@@ -114,6 +114,13 @@ def load_model():
     return ratings, strengths, matches, matches_all, fonte
 
 
+@st.cache_data(ttl=900, show_spinner="Buscando odds das casas...")
+def fetch_live_odds_cached(api_key: str):
+    """Busca as odds ao vivo com cache de 15 min (poupa créditos da API)."""
+    from live_odds import fetch_world_cup_odds
+    return fetch_world_cup_odds(api_key)
+
+
 def _available(strengths, ratings):
     """Times da Copa 2026 com histórico, ordenados por grupo e depois por Elo."""
     avail = [t for t in COPA_2026_TEAMS if t in strengths.index]
@@ -149,9 +156,9 @@ def main():
             st.warning("CSV real não encontrado. Baixe `results.csv` — veja o README.")
 
     # Abas
-    tab_pred, tab_all, tab_sim, tab_odds, tab_rank, tab_dados = st.tabs(
+    tab_pred, tab_all, tab_sim, tab_odds, tab_live, tab_rank, tab_dados = st.tabs(
         ["🎯 Prever Jogo", "🗓️ Toda a Copa", "🏆 Simular Torneio",
-         "📈 Análise de Odds", "🏅 Ranking", "🗃️ Dados"]
+         "📈 Análise de Odds", "📡 Odds das Casas", "🏅 Ranking", "🗃️ Dados"]
     )
 
     # ===================================================================
@@ -177,6 +184,12 @@ def main():
     # ===================================================================
     with tab_odds:
         _tab_odds(teams, ratings, strengths)
+
+    # ===================================================================
+    # TAB 5 — Odds das Casas (média ao vivo × modelo)
+    # ===================================================================
+    with tab_live:
+        _tab_odds_live(teams, ratings, strengths)
 
     # ===================================================================
     # TAB 4 — Ranking
@@ -994,6 +1007,223 @@ def _tab_odds(teams, ratings, strengths):
         "que a justa, o modelo enxerga valor (edge positivo). "
         "**Edge não é recomendação de aposta** — considere lesões, escalações e a "
         "incerteza do próprio modelo."
+    )
+
+
+# ---------------------------------------------------------------------------
+# TAB 5 — Odds das Casas (média ao vivo das casas × modelo)
+# ---------------------------------------------------------------------------
+def _tab_odds_live(teams, ratings, strengths):
+    import requests
+    from goal_model import estimate_lambdas_for_fixture, calculate_score_matrix, probabilities_from_matrix
+    from odds_analysis import remove_bookmaker_margin, calculate_edge
+    import live_odds
+    from live_odds import (
+        aggregate_event_odds, remove_margin_two_way, KNOCKOUT_START, SAMPLE_RESPONSE,
+    )
+
+    st.subheader("Odds das casas × modelo — média atualizada do mercado")
+    with st.expander("❓ Como funciona"):
+        st.markdown(
+            "Busca as odds **1X2** e **Over/Under 2.5 gols** dos jogos da Copa na "
+            "[The Odds API](https://the-odds-api.com) (agrega dezenas de casas: "
+            "Bet365, Pinnacle, Betfair, etc.), calcula a **média das odds entre as "
+            "casas** e compara com as probabilidades do modelo.\n\n"
+            "**Edge** = `prob_modelo − prob_implícita_mercado` (após remover a "
+            "margem da casa). Positivo → o modelo vê o resultado como mais provável "
+            "do que o mercado sugere; a odd está 'grande'.\n\n"
+            "**Premissas:** o time da casa (home) da API entra como Time A; "
+            "anfitriões (EUA/México/Canadá) jogando como mandantes recebem bônus de "
+            f"campo; jogos a partir de {KNOCKOUT_START.strftime('%d/%m/%Y')} são "
+            "tratados como mata-mata.\n\n"
+            "**Edge ≠ recomendação de aposta** — o mercado pode saber de lesões, "
+            "escalações e clima que o modelo não vê."
+        )
+
+    # --- Chave da API --------------------------------------------------------
+    try:
+        api_key = st.secrets.get("ODDS_API_KEY", "")
+    except Exception:
+        api_key = ""
+    demo = st.checkbox(
+        "🧪 Modo demonstração (dados de exemplo, sem gastar créditos)",
+        value=not bool(api_key), key="live_demo",
+    )
+    if not api_key:
+        api_key = st.text_input(
+            "Chave da The Odds API", type="password", key="live_api_key",
+            help="Crie uma chave grátis em https://the-odds-api.com (500 créditos/mês).",
+        )
+
+    quota = None
+    if demo:
+        events = SAMPLE_RESPONSE
+        st.caption("🧪 Exibindo **dados de exemplo** — desmarque o modo demonstração "
+                   "e informe sua chave para odds reais.")
+    else:
+        if not api_key:
+            st.info(
+                "Para ver as odds reais, crie uma chave **grátis** em "
+                "[the-odds-api.com](https://the-odds-api.com) e:\n\n"
+                "- **Local:** crie `.streamlit/secrets.toml` com "
+                "`ODDS_API_KEY = \"sua-chave\"`; ou\n"
+                "- **Streamlit Cloud:** adicione `ODDS_API_KEY` em *Settings → Secrets*; ou\n"
+                "- Cole a chave no campo acima.\n\n"
+                "Enquanto isso, ative o **modo demonstração** para ver a aba funcionando."
+            )
+            return
+        c_ref1, c_ref2 = st.columns([1, 4])
+        with c_ref1:
+            if st.button("🔄 Atualizar agora", key="live_refresh"):
+                fetch_live_odds_cached.clear()
+        try:
+            events, quota = fetch_live_odds_cached(api_key)
+        except requests.HTTPError as exc:
+            code = exc.response.status_code if exc.response is not None else None
+            if code in (401, 422):
+                st.error("Chave da API inválida ou não autorizada. Confira a chave em "
+                         "https://the-odds-api.com.")
+            elif code == 429:
+                st.error("Limite de requisições da The Odds API atingido — aguarde ou "
+                         "use o modo demonstração.")
+            else:
+                st.warning(f"Erro ao consultar a The Odds API: {exc}")
+            return
+        except requests.RequestException as exc:
+            st.warning(f"Falha de rede ao consultar a The Odds API: {exc}")
+            return
+        if quota:
+            st.caption(f"Cache de 15 min · créditos restantes no mês: "
+                       f"**{quota.get('remaining', '?')}** (usados: {quota.get('used', '?')})")
+
+    if not events:
+        st.info(
+            "A The Odds API ainda não tem jogos com odds publicadas para "
+            f"`{live_odds.SPORT_KEY}`. As casas costumam abrir os mercados "
+            "perto dos jogos."
+        )
+        if not demo and api_key and st.button("🔎 Listar esportes disponíveis (0 créditos)"):
+            try:
+                sports = live_odds.fetch_available_sports(api_key)
+                soccer = [s for s in sports if str(s.get("key", "")).startswith("soccer")]
+                st.dataframe(pd.DataFrame(soccer)[["key", "title", "active"]],
+                             hide_index=True, use_container_width=True)
+            except requests.RequestException as exc:
+                st.warning(f"Não foi possível listar os esportes: {exc}")
+        return
+
+    resumo, detalhe, unmatched = aggregate_event_odds(events, teams)
+
+    if unmatched:
+        with st.expander(f"⚠️ {len(unmatched)} jogo(s) não mapeado(s) para o modelo"):
+            st.dataframe(pd.DataFrame(unmatched), hide_index=True, use_container_width=True)
+            st.caption("Nomes de seleção que a API usa e o modelo não reconheceu — "
+                       "podem ser adicionados ao mapeamento em `src/live_odds.py`.")
+
+    if resumo.empty:
+        st.warning("Nenhum jogo pôde ser comparado com o modelo.")
+        return
+
+    # --- Modelo para cada jogo ----------------------------------------------
+    rows_1x2, rows_ou = [], []
+    for r in resumo.itertuples(index=False):
+        ta, tb = r.time_a, r.time_b
+        if ta not in strengths.index or tb not in strengths.index:
+            continue
+        mando_neutro = 0 if ta in HOSTS else 1
+        eliminatorio = int(pd.Timestamp(r.commence_time).date() >= KNOCKOUT_START)
+        diff_elo = ratings.get(ta, 1500) - ratings.get(tb, 1500)
+        la, lb = estimate_lambdas_for_fixture(
+            ta, tb, strengths, diferenca_elo=diff_elo,
+            jogo_eliminatorio=eliminatorio, mando_neutro=mando_neutro,
+        )
+        probs = probabilities_from_matrix(calculate_score_matrix(la, lb))
+        data_str = pd.Timestamp(r.commence_time).strftime("%d/%m %H:%M")
+
+        if r.n_casas_1x2 > 0:
+            market = remove_bookmaker_margin(r.odd_1_media, r.odd_x_media, r.odd_2_media)
+            rows_1x2.append({
+                "Jogo": r.jogo,
+                "Data (UTC)": data_str,
+                "Casas": int(r.n_casas_1x2),
+                "Odd média 1": round(r.odd_1_media, 2),
+                "Odd média X": round(r.odd_x_media, 2),
+                "Odd média 2": round(r.odd_2_media, 2),
+                "Mercado 1 %": round(market["prob_time_a"] * 100, 1),
+                "Mercado X %": round(market["prob_empate"] * 100, 1),
+                "Mercado 2 %": round(market["prob_time_b"] * 100, 1),
+                "Modelo 1 %": round(probs["prob_vitoria_time_a"] * 100, 1),
+                "Modelo X %": round(probs["prob_empate"] * 100, 1),
+                "Modelo 2 %": round(probs["prob_vitoria_time_b"] * 100, 1),
+                "Edge 1 (pp)": round(calculate_edge(probs["prob_vitoria_time_a"], market["prob_time_a"]) * 100, 1),
+                "Edge X (pp)": round(calculate_edge(probs["prob_empate"], market["prob_empate"]) * 100, 1),
+                "Edge 2 (pp)": round(calculate_edge(probs["prob_vitoria_time_b"], market["prob_time_b"]) * 100, 1),
+            })
+
+        if r.n_casas_ou > 0:
+            mou = remove_margin_two_way(r.odd_over25_media, r.odd_under25_media)
+            rows_ou.append({
+                "Jogo": r.jogo,
+                "Data (UTC)": data_str,
+                "Casas": int(r.n_casas_ou),
+                "Odd média Over 2.5": round(r.odd_over25_media, 2),
+                "Odd média Under 2.5": round(r.odd_under25_media, 2),
+                "Mercado Over %": round(mou["prob_over"] * 100, 1),
+                "Mercado Under %": round(mou["prob_under"] * 100, 1),
+                "Modelo Over %": round(probs["prob_over_2_5"] * 100, 1),
+                "Modelo Under %": round(probs["prob_under_2_5"] * 100, 1),
+                "Edge Over (pp)": round(calculate_edge(probs["prob_over_2_5"], mou["prob_over"]) * 100, 1),
+                "Edge Under (pp)": round(calculate_edge(probs["prob_under_2_5"], mou["prob_under"]) * 100, 1),
+            })
+
+    if not rows_1x2 and not rows_ou:
+        st.warning("Os jogos com odds não têm histórico suficiente no modelo para comparar.")
+        return
+
+    # --- Tabela 1X2 ----------------------------------------------------------
+    if rows_1x2:
+        st.markdown("##### 🏁 Resultado (1X2) — média das casas × modelo")
+        df_1x2 = pd.DataFrame(rows_1x2)
+        edge_cols = ["Edge 1 (pp)", "Edge X (pp)", "Edge 2 (pp)"]
+        st.dataframe(
+            df_1x2.style.background_gradient(
+                subset=edge_cols, cmap="RdYlGn", vmin=-10, vmax=10,
+            ),
+            hide_index=True, use_container_width=True,
+        )
+        st.caption("*Mercado %* = probabilidade implícita na **média** das odds, sem a "
+                   "margem da casa. *Edge* > 0 (verde) → modelo vê o resultado como "
+                   "mais provável que o mercado.")
+
+    # --- Tabela Over/Under 2.5 ------------------------------------------------
+    if rows_ou:
+        st.markdown("##### 📊 Gols — Over/Under 2.5 — média das casas × modelo")
+        df_ou = pd.DataFrame(rows_ou)
+        st.dataframe(
+            df_ou.style.background_gradient(
+                subset=["Edge Over (pp)", "Edge Under (pp)"],
+                cmap="RdYlGn", vmin=-10, vmax=10,
+            ),
+            hide_index=True, use_container_width=True,
+        )
+
+    # --- Detalhe por casa ------------------------------------------------------
+    with st.expander("🔍 Odds por casa de aposta (detalhe de um jogo)"):
+        jogo_sel = st.selectbox("Jogo", resumo["jogo"].tolist(), key="live_detail")
+        det = detalhe[detalhe["jogo"] == jogo_sel].copy()
+        det_show = det[["casa", "odd_1", "odd_x", "odd_2", "odd_over25", "odd_under25"]]
+        det_show.columns = ["Casa", "Odd 1", "Odd X", "Odd 2", "Over 2.5", "Under 2.5"]
+        odds_cols = ["Odd 1", "Odd X", "Odd 2", "Over 2.5", "Under 2.5"]
+        st.dataframe(
+            det_show.style.highlight_max(subset=odds_cols, color="#c6efce")
+                    .format("{:.2f}", subset=odds_cols, na_rep="—"),
+            hide_index=True, use_container_width=True,
+        )
+        st.caption("Em verde, a **melhor odd** (maior pagamento) de cada coluna.")
+
+    st.caption(
+        "**Edge não é recomendação de aposta** — considere lesões, escalações, "
+        "liquidez e a incerteza do próprio modelo antes de qualquer decisão."
     )
 
 
