@@ -242,72 +242,69 @@ def _tab_prediction(teams, ratings, strengths):
     st.divider()
     st.subheader(f"{time_a}  ×  {time_b}  —  _{ctx}_")
 
-    # Métricas principais (Poisson)
-    c1,c2,c3,c4,c5 = st.columns(5)
-    c1.metric(f"Vitória {time_a}", f"{probs['prob_vitoria_time_a']*100:.0f}%",
-              help="Probabilidade Poisson")
-    c2.metric("Empate",            f"{probs['prob_empate']*100:.0f}%")
-    c3.metric(f"Vitória {time_b}", f"{probs['prob_vitoria_time_b']*100:.0f}%")
-    c4.metric("Over 2.5",          f"{probs['prob_over_2_5']*100:.0f}%")
-    c5.metric("Ambos marcam",      f"{probs['prob_ambos_marcam']*100:.0f}%")
+    # --- Resultado (1X2) — uma única probabilidade por saída (Poisson) -----
+    st.markdown("##### 🏁 Resultado (1X2)")
+    c1, c2, c3 = st.columns(3)
+    c1.metric(f"1 · Vitória {time_a}", f"{probs['prob_vitoria_time_a']*100:.0f}%")
+    c2.metric("X · Empate",            f"{probs['prob_empate']*100:.0f}%")
+    c3.metric(f"2 · Vitória {time_b}", f"{probs['prob_vitoria_time_b']*100:.0f}%")
 
-    # Verificação Monte Carlo (delta vs Poisson)
-    d1,d2,d3,d4,d5 = st.columns(5)
-    d1.metric("MC Vitória " + time_a, f"{mc['prob_vitoria_time_a']*100:.0f}%",
-              delta=f"{(mc['prob_vitoria_time_a']-probs['prob_vitoria_time_a'])*100:+.1f}pp",
-              help="Monte Carlo 10.000 simulações — delta vs Poisson")
-    d2.metric("MC Empate",             f"{mc['prob_empate']*100:.0f}%",
-              delta=f"{(mc['prob_empate']-probs['prob_empate'])*100:+.1f}pp")
-    d3.metric("MC Vitória " + time_b,  f"{mc['prob_vitoria_time_b']*100:.0f}%",
-              delta=f"{(mc['prob_vitoria_time_b']-probs['prob_vitoria_time_b'])*100:+.1f}pp")
-    d4.metric("λ " + time_a, f"{la:.2f}", help="Gols esperados pelo modelo")
-    d5.metric("λ " + time_b, f"{lb:.2f}")
+    # --- Gols esperados (feitos e sofridos por seleção) --------------------
+    st.markdown("##### ⚽ Gols esperados")
+    gcol1, gcol2 = st.columns([3, 1])
+    with gcol1:
+        gols_df = pd.DataFrame({
+            "Seleção": [time_a, time_b],
+            "Gols feitos (esperado)":   [round(la, 2), round(lb, 2)],
+            "Gols sofridos (esperado)": [round(lb, 2), round(la, 2)],
+        })
+        st.dataframe(gols_df, hide_index=True, use_container_width=True)
+    with gcol2:
+        st.metric("Total de gols", f"{la + lb:.2f}",
+                  help="Soma dos gols esperados das duas seleções")
 
-    # Top-3 placares (em vez de um único "placar provável", que dá a falsa
-    # impressão de certeza — o modal costuma ter só ~12%).
+    # --- Mercados de gols (Over/Under) -------------------------------------
+    st.markdown("##### 📊 Mercados de gols (Over/Under)")
+    o1, o2, o3, o4, o5 = st.columns(5)
+    o1.metric("Over 0.5",     f"{probs['prob_over_0_5']*100:.0f}%")
+    o2.metric("Over 1.5",     f"{probs['prob_over_1_5']*100:.0f}%")
+    o3.metric("Over 2.5",     f"{probs['prob_over_2_5']*100:.0f}%")
+    o4.metric("Under 2.5",    f"{probs['prob_under_2_5']*100:.0f}%")
+    o5.metric("Ambos marcam", f"{probs['prob_ambos_marcam']*100:.0f}%")
+
+    # --- Top-3 placares (em vez de um único "placar provável", que dá a
+    # falsa impressão de certeza — o modal costuma ter só ~12%) -------------
+    st.markdown("##### 🔢 Placares mais prováveis")
     top3 = top3_from_matrix(matrix)
-    e1,e2,e3,e4,e5 = st.columns(5)
-    for col, (plc, p) in zip([e1, e2, e3], top3):
-        col.metric(f"Placar {plc}", f"{p*100:.1f}%", help="Top-3 placares mais prováveis")
-    e4.metric("Elo " + time_a, f"{ratings.get(time_a,1500):.0f}")
-    e5.metric("Diferença Elo", f"{diff_elo:+.0f}",
-              help=f"Elo {time_b}: {ratings.get(time_b,1500):.0f}")
-    st.caption(f"Soma dos 3 placares mais prováveis: {sum(p for _,p in top3)*100:.0f}% — "
+    p1, p2, p3 = st.columns(3)
+    for col, (plc, p) in zip([p1, p2, p3], top3):
+        col.metric(plc, f"{p*100:.1f}%")
+    st.caption(f"Os 3 placares mais prováveis somam {sum(p for _,p in top3)*100:.0f}% — "
                "nenhum placar isolado domina; futebol tem alta variância.")
 
-    # Mercados adicionais
-    with st.expander("Mercados adicionais (Poisson)"):
-        mkt = {
-            "Over 0.5": probs["prob_over_0_5"],
-            "Over 1.5": probs["prob_over_1_5"],
-            "Over 2.5": probs["prob_over_2_5"],
-            "Under 2.5": probs["prob_under_2_5"],
-            "Ambos marcam": probs["prob_ambos_marcam"],
-        }
-        mkt_df = pd.DataFrame({"Mercado": mkt.keys(), "Probabilidade": [f"{v*100:.1f}%" for v in mkt.values()]})
-        st.dataframe(mkt_df, hide_index=True, use_container_width=True)
-
-    # Mercados de escanteios
-    with st.expander("⛳ Mercados de Escanteios (Poisson)"):
-        st.caption(
-            "Modelo Poisson calibrado sobre médias internacionais (~10.3 escanteios/jogo). "
-            "Quando dados históricos de escanteios não estiverem disponíveis, "
-            "o modelo usa apenas o ajuste de Elo como diferencial entre os times."
+    # --- Escanteios previstos ----------------------------------------------
+    st.markdown("##### ⛳ Escanteios previstos")
+    try:
+        mu_c_a, mu_c_b = estimate_corner_mus_for_fixture(
+            time_a, time_b, strengths,
+            diferenca_elo=diff_elo,
+            jogo_eliminatorio=int(eliminatorio),
+            mando_neutro=mando_neutro,
         )
-        try:
-            mu_c_a, mu_c_b = estimate_corner_mus_for_fixture(
-                time_a, time_b, strengths,
-                diferenca_elo=diff_elo,
-                jogo_eliminatorio=int(eliminatorio),
-                mando_neutro=mando_neutro,
+        cp = corner_total_probabilities(mu_c_a, mu_c_b)
+
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric(f"Escanteios {time_a}", f"{cp['mu_time_a']:.1f}")
+        s2.metric(f"Escanteios {time_b}", f"{cp['mu_time_b']:.1f}")
+        s3.metric("Total esperado",       f"{cp['mu_total']:.1f}")
+        s4.metric("Over 9.5",             f"{cp['prob_over_9_5']*100:.0f}%")
+
+        with st.expander("⛳ Mercados de escanteios detalhados"):
+            st.caption(
+                "Modelo Poisson calibrado sobre médias internacionais (~10.3 escanteios/jogo). "
+                "Quando dados históricos de escanteios não estiverem disponíveis, "
+                "o modelo usa apenas o ajuste de Elo como diferencial entre os times."
             )
-            cp = corner_total_probabilities(mu_c_a, mu_c_b)
-
-            cc1, cc2, cc3 = st.columns(3)
-            cc1.metric(f"μ Escanteios {time_a}", f"{cp['mu_time_a']:.1f}")
-            cc2.metric(f"μ Escanteios {time_b}", f"{cp['mu_time_b']:.1f}")
-            cc3.metric("μ Total Escanteios", f"{cp['mu_total']:.1f}")
-
             ou_data = {
                 "Linha": ["8.5", "9.5", "10.5", "11.5", "12.5"],
                 "Over %": [
@@ -342,9 +339,29 @@ def _tab_prediction(teams, ratings, strengths):
                        f"{cp['spread_empate_escanteios']*100:.1f}%")
             sd3.metric(f"Mais corners: {time_b}",
                        f"{cp['spread_b_vence_escanteios']*100:.1f}%")
+    except Exception as exc:
+        st.warning(f"Previsão de escanteios indisponível: {exc}")
 
-        except Exception as exc:
-            st.warning(f"Previsão de escanteios indisponível: {exc}")
+    # --- Bastidores do modelo (Elo + verificação Monte Carlo) --------------
+    with st.expander("🔍 Detalhes do modelo (Elo e verificação Monte Carlo)"):
+        x1, x2, x3 = st.columns(3)
+        x1.metric("Elo " + time_a,  f"{ratings.get(time_a,1500):.0f}")
+        x2.metric("Elo " + time_b,  f"{ratings.get(time_b,1500):.0f}")
+        x3.metric("Diferença Elo",  f"{diff_elo:+.0f}")
+
+        st.markdown("**Verificação cruzada — Monte Carlo (10.000 simulações):**")
+        d1, d2, d3 = st.columns(3)
+        d1.metric("MC Vitória " + time_a, f"{mc['prob_vitoria_time_a']*100:.0f}%",
+                  delta=f"{(mc['prob_vitoria_time_a']-probs['prob_vitoria_time_a'])*100:+.1f}pp vs Poisson")
+        d2.metric("MC Empate",            f"{mc['prob_empate']*100:.0f}%",
+                  delta=f"{(mc['prob_empate']-probs['prob_empate'])*100:+.1f}pp vs Poisson")
+        d3.metric("MC Vitória " + time_b, f"{mc['prob_vitoria_time_b']*100:.0f}%",
+                  delta=f"{(mc['prob_vitoria_time_b']-probs['prob_vitoria_time_b'])*100:+.1f}pp vs Poisson")
+        st.caption(
+            "O Monte Carlo sorteia gols independentes (sem Dixon-Coles), então uma "
+            "pequena diferença no empate vs. Poisson é esperada — é o efeito da "
+            "correção de empates. Os dois métodos devem concordar nas demais saídas."
+        )
 
     # Matriz de placares
     st.subheader("Matriz de placares (%)")
@@ -395,9 +412,8 @@ def _tab_prediction(teams, ratings, strengths):
     )
     st.dataframe(styler, use_container_width=True)
 
-    st.caption("O Monte Carlo sorteia gols independentes (sem Dixon-Coles), então uma "
-               "pequena diferença no empate vs. Poisson é esperada — é o efeito da correção "
-               "de empates. Campo neutro para quase todos os jogos da Copa — exceto anfitriões.")
+    st.caption("Campo neutro para quase todos os jogos da Copa — exceto anfitriões "
+               "(EUA, México e Canadá) na fase de grupos.")
 
 
 # ---------------------------------------------------------------------------
@@ -688,25 +704,83 @@ def _tab_odds(teams, ratings, strengths):
     market = remove_bookmaker_margin(odd_a, odd_draw, odd_b)
     margem = market["overround"]
 
+    def _leitura_edge(edge: float) -> str:
+        """Tradução amigável do edge (usa a régua de classify_edge)."""
+        sinal = classify_edge(edge)
+        if sinal == "sem sinal":
+            return "⚖️ Modelo e mercado concordam"
+        if edge > 0:
+            return {
+                "sinal fraco":    "🙂 Odd levemente atrativa",
+                "sinal moderado": "✅ Possível valor na odd",
+                "sinal forte":    "🔥 Forte valor potencial",
+            }[sinal]
+        return {
+            "sinal fraco":    "🤏 Odd um pouco baixa",
+            "sinal moderado": "⚠️ Odd abaixo do justo",
+            "sinal forte":    "🚫 Odd muito baixa — evitar",
+        }[sinal]
+
+    outcomes = [
+        (f"1 · Vitória {time_a}", "vitoria_a", odd_a,    market["prob_time_a"]),
+        ("X · Empate",            "empate",    odd_draw, market["prob_empate"]),
+        (f"2 · Vitória {time_b}", "vitoria_b", odd_b,    market["prob_time_b"]),
+    ]
+
     st.divider()
-    m1,m2,m3,m4 = st.columns(4)
+
+    # Métricas resumidas: probabilidade do modelo + delta vs mercado
+    m1, m2, m3, m4 = st.columns(4)
+    for col, (label, mk, _odd, pm) in zip([m1, m2, m3], outcomes):
+        edge = calculate_edge(p_model[mk], pm)
+        col.metric(label, f"{p_model[mk]*100:.0f}%",
+                   delta=f"{edge*100:+.1f}pp vs mercado",
+                   help=f"Modelo {p_model[mk]*100:.1f}% · Mercado (sem margem) {pm*100:.1f}%")
     m4.metric("Margem da casa", f"{margem*100:.1f}%",
               help="Overround: quanto acima de 100% somam as probs implícitas")
 
-    for label, mk, pm, col in [
-        (f"Vitória {time_a}", "vitoria_a", market["prob_time_a"], m1),
-        ("Empate",            "empate",    market["prob_empate"],  m2),
-        (f"Vitória {time_b}", "vitoria_b", market["prob_time_b"], m3),
-    ]:
-        edge = calculate_edge(p_model[mk], pm)
-        sinal = classify_edge(edge)
-        col.metric(label,
-                   f"Modelo {p_model[mk]*100:.1f}%  /  Mercado {pm*100:.1f}%",
-                   delta=f"Edge {edge*100:+.1f}pp — {sinal}")
+    # Tabela detalhada com leitura amigável
+    rows = []
+    for label, mk, odd, pm in outcomes:
+        p = p_model[mk]
+        edge = calculate_edge(p, pm)
+        rows.append({
+            "Resultado": label,
+            "Odd da casa": round(odd, 2),
+            "Odd justa (modelo)": round(1.0 / p, 2) if p > 0 else None,
+            "Prob. modelo": f"{p*100:.1f}%",
+            "Prob. mercado": f"{pm*100:.1f}%",
+            "Edge (pp)": round(edge * 100, 1),
+            "Leitura": _leitura_edge(edge),
+        })
+    edge_df = pd.DataFrame(rows)
 
-    st.caption("`edge` = prob. modelo − prob. implícita (sem margem). "
-               "Positivo = modelo mais otimista que o mercado. "
-               "Não é recomendação de aposta.")
+    best = max(rows, key=lambda r: r["Edge (pp)"])
+    if best["Edge (pp)"] >= 2.0:
+        st.success(
+            f"💡 **Melhor oportunidade: {best['Resultado']}** — o modelo estima "
+            f"{best['Prob. modelo']} contra {best['Prob. mercado']} do mercado "
+            f"({best['Edge (pp)']:+.1f}pp). Odd justa pelo modelo: "
+            f"{best['Odd justa (modelo)']} vs {best['Odd da casa']} oferecida."
+        )
+    else:
+        st.info("⚖️ Nenhuma oportunidade clara neste jogo — modelo e mercado "
+                "estão de acordo (todos os edges abaixo de 2pp).")
+
+    st.dataframe(
+        edge_df.style.background_gradient(
+            subset=["Edge (pp)"], cmap="RdYlGn", vmin=-10, vmax=10,
+        ),
+        hide_index=True, use_container_width=True,
+    )
+
+    st.caption(
+        "**Como ler:** *Prob. mercado* já vem sem a margem da casa. "
+        "*Odd justa* = 1 ÷ probabilidade do modelo — se a odd da casa for **maior** "
+        "que a justa, o modelo enxerga valor (edge positivo). "
+        "**Edge não é recomendação de aposta** — considere lesões, escalações e a "
+        "incerteza do próprio modelo."
+    )
 
 
 # ---------------------------------------------------------------------------
