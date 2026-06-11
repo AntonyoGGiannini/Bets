@@ -625,12 +625,16 @@ def _tab_simulacao(ratings, strengths, fonte):
             "gols, Elo no desempate).\n"
             "2. **Classificação** — avançam os **2 primeiros** de cada grupo + os **8 "
             "melhores terceiros** (formato 2026 → 32 seleções).\n"
-            "3. **Mata-mata** — bracket seedado por Elo; cada confronto é sorteado "
-            "(empate → pênaltis) até sobrar o campeão.\n\n"
+            "3. **Mata-mata** — usa o **chaveamento oficial da Copa 2026**: cada jogo "
+            "das 16-avos é fixo por posição de grupo (1º/2º/3º) e a árvore até a final "
+            "é a oficial; os 8 melhores terceiros são alocados aos slots respeitando "
+            "os conjuntos de grupos permitidos pela FIFA. Empate → pênaltis.\n\n"
             "Repetindo isso milhares de vezes, a **frequência de títulos** de cada "
             "seleção estima sua probabilidade de ser campeã.\n\n"
-            "⚠️ O chaveamento por Elo é uma **aproximação** (o bracket oficial 2026 "
-            "depende do sorteio real). Jogos tratados como campo neutro."
+            "ℹ️ O esqueleto do chaveamento é o oficial (times do mesmo grupo só se "
+            "reencontram a partir das quartas). A alocação exata dos terceiros segue "
+            "um emparelhamento válido — idêntico à tabela FIFA na maioria dos casos. "
+            "Jogos tratados como campo neutro."
         )
 
     teams = [t for t in COPA_2026_TEAMS if t in strengths.index]
@@ -749,9 +753,10 @@ def _tab_simulacao(ratings, strengths, fonte):
     # ----- 🏟️ Confrontos por fase --------------------------------------------
     st.markdown("##### 🏟️ Confrontos mais prováveis por fase")
     st.caption(
-        "O chaveamento varia a cada simulação (depende de quem se classifica e do "
-        "seeding por Elo) — abaixo, os confrontos **mais frequentes** em cada fase "
-        "e a % das simulações em que aconteceram."
+        "Os slots do mata-mata são **oficiais** (fixos por posição de grupo), mas "
+        "quem ocupa cada slot varia a cada simulação conforme os classificados — "
+        "abaixo, os confrontos **mais frequentes** em cada fase e a % das "
+        "simulações em que aconteceram."
     )
     round_order = ["16-avos", "Oitavas", "Quartas", "Semifinal", "Final"]
     n_show = {"16-avos": 16, "Oitavas": 8, "Quartas": 6, "Semifinal": 4, "Final": 5}

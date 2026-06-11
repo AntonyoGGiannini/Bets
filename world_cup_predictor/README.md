@@ -76,7 +76,7 @@ world_cup_predictor/
 │   ├── evaluation.py         # Brier, Log Loss, calibração, erro de gols
 │   ├── pipeline.py           # orquestra a V1 de ponta a ponta
 │   ├── backtest.py           # backtest walk-forward + métricas
-│   ├── simulate_tournament_2026.py  # Monte Carlo da Copa inteira (grupos → campeão)
+│   ├── simulate_tournament_2026.py  # Monte Carlo da Copa inteira (chaveamento oficial → campeão)
 │   └── top_scorer.py         # candidatos a artilheiro (goalscorers.csv)
 ├── app/
 │   └── streamlit_app.py      # app interativo de demonstração
