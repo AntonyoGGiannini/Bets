@@ -149,8 +149,9 @@ def main():
             st.warning("CSV real não encontrado. Baixe `results.csv` — veja o README.")
 
     # Abas
-    tab_pred, tab_all, tab_odds, tab_rank, tab_dados = st.tabs(
-        ["🎯 Prever Jogo", "🗓️ Toda a Copa", "📈 Análise de Odds", "🏆 Ranking", "🗃️ Dados"]
+    tab_pred, tab_all, tab_sim, tab_odds, tab_rank, tab_dados = st.tabs(
+        ["🎯 Prever Jogo", "🗓️ Toda a Copa", "🏆 Simular Torneio",
+         "📈 Análise de Odds", "🏅 Ranking", "🗃️ Dados"]
     )
 
     # ===================================================================
@@ -166,7 +167,13 @@ def main():
         _tab_all_games(ratings, strengths)
 
     # ===================================================================
-    # TAB 3 — Análise de Odds
+    # TAB 3 — Simulação do torneio inteiro (até o campeão)
+    # ===================================================================
+    with tab_sim:
+        _tab_simulacao(ratings, strengths, fonte)
+
+    # ===================================================================
+    # TAB 4 — Análise de Odds
     # ===================================================================
     with tab_odds:
         _tab_odds(teams, ratings, strengths)
@@ -502,7 +509,122 @@ def _tab_all_games(ratings, strengths):
 
 
 # ---------------------------------------------------------------------------
-# TAB 3 — Análise de Odds
+# TAB 3 — Simulação Monte Carlo do torneio inteiro (até o campeão)
+# ---------------------------------------------------------------------------
+@st.cache_data(show_spinner="Simulando a Copa 2026 (grupos → mata-mata)...")
+def _run_tournament(_ratings, _strengths, n_sims: int, seed: int, cache_key: str):
+    """Roda ``n_sims`` torneios completos e devolve a contagem de títulos.
+
+    ``_ratings``/``_strengths`` têm o prefixo ``_`` para o Streamlit não tentar
+    fazer hash deles; o ``cache_key`` (fonte dos dados) entra na chave do cache
+    para invalidar quando o dataset muda. Reutiliza as funções de
+    ``simulate_tournament_2026`` para não duplicar a lógica do bracket.
+    """
+    from collections import defaultdict
+    import simulate_tournament_2026 as sim
+
+    teams = [t for t in COPA_2026_TEAMS if t in _strengths.index]
+    cache, cache_ko = sim.make_lambda_cache(teams, _ratings, _strengths)
+
+    rng = np.random.default_rng(seed)
+    champs = defaultdict(int)
+    for _ in range(n_sims):
+        champs[sim.simulate_once(rng, _ratings, cache, cache_ko)] += 1
+
+    return pd.Series(champs, dtype="int64").sort_values(ascending=False)
+
+
+def _tab_simulacao(ratings, strengths, fonte):
+    st.subheader("Simulação do torneio inteiro — do grupo ao campeão")
+    with st.expander("❓ Como funciona"):
+        st.markdown(
+            "Diferente da aba **Toda a Copa** (que estima pontos esperados na fase de "
+            "grupos), aqui o torneio é **simulado por inteiro** via Monte Carlo:\n\n"
+            "1. **Fase de grupos** — cada um dos 72 jogos tem o placar sorteado de uma "
+            "Poisson com os λ do modelo; monta-se a tabela de cada grupo (pontos, saldo, "
+            "gols, Elo no desempate).\n"
+            "2. **Classificação** — avançam os **2 primeiros** de cada grupo + os **8 "
+            "melhores terceiros** (formato 2026 → 32 seleções).\n"
+            "3. **Mata-mata** — bracket seedado por Elo; cada confronto é sorteado "
+            "(empate → pênaltis) até sobrar o campeão.\n\n"
+            "Repetindo isso milhares de vezes, a **frequência de títulos** de cada "
+            "seleção estima sua probabilidade de ser campeã.\n\n"
+            "⚠️ O chaveamento por Elo é uma **aproximação** (o bracket oficial 2026 "
+            "depende do sorteio real). Jogos tratados como campo neutro."
+        )
+
+    teams = [t for t in COPA_2026_TEAMS if t in strengths.index]
+    faltando = [t for t in COPA_2026_TEAMS if t not in strengths.index]
+    if len(teams) < len(COPA_2026_TEAMS):
+        st.warning(
+            f"{len(faltando)} seleção(ões) sem histórico suficiente "
+            f"({', '.join(faltando)}) — ficam de fora da simulação."
+        )
+
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        n_sims = st.select_slider(
+            "Número de simulações", options=[500, 1000, 2000, 3000, 5000, 10000],
+            value=2000,
+            help="Mais simulações = estimativa mais estável, porém mais lenta.",
+        )
+    with col2:
+        seed = st.number_input("Seed", min_value=0, value=42, step=1,
+                               help="Fixa o sorteio para resultados reprodutíveis.")
+    with col3:
+        st.write("")
+        st.write("")
+        rodar = st.button("▶ Simular torneio", type="primary", use_container_width=True)
+
+    if not rodar:
+        st.info("Ajuste os parâmetros e clique em **Simular torneio**.")
+        return
+
+    champs = _run_tournament(ratings, strengths, int(n_sims), int(seed), fonte)
+    total = int(champs.sum())
+    prob = (champs / total * 100)
+
+    df = pd.DataFrame({
+        "Seleção": prob.index,
+        "Grupo": [TEAM_GROUP.get(t, "?") for t in prob.index],
+        "Elo": [round(ratings.get(t, 1500)) for t in prob.index],
+        "Títulos": [int(champs[t]) for t in prob.index],
+        "Prob. título %": prob.round(1).values,
+    }).reset_index(drop=True)
+    df.index += 1
+
+    campea = df.iloc[0]
+    st.success(
+        f"🏆 Campeã mais provável: **{campea['Seleção']}** "
+        f"({campea['Prob. título %']:.1f}% dos {total:,} torneios simulados)"
+    )
+
+    ctop = st.columns(min(5, len(df)))
+    for col, (_, r) in zip(ctop, df.head(5).iterrows()):
+        col.metric(r["Seleção"], f"{r['Prob. título %']:.1f}%", help=f"Elo {r['Elo']}")
+
+    st.markdown("**Probabilidade de título por seleção**")
+    st.dataframe(
+        df.head(20).style.background_gradient(subset=["Prob. título %"], cmap="Greens"),
+        use_container_width=True,
+    )
+
+    chart_df = df.head(12).set_index("Seleção")["Prob. título %"]
+    st.bar_chart(chart_df)
+
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇️ Baixar probabilidades de título (CSV)", csv,
+        file_name="copa2026_prob_titulo.csv", mime="text/csv",
+    )
+    st.caption(
+        "Nenhum favorito costuma passar de ~25% — futebol de seleção é de alta "
+        "variância. 'Campeã provável' = a aposta menos arriscada, não uma certeza."
+    )
+
+
+# ---------------------------------------------------------------------------
+# TAB 4 — Análise de Odds
 # ---------------------------------------------------------------------------
 def _tab_odds(teams, ratings, strengths):
     from goal_model import estimate_lambdas_for_fixture, calculate_score_matrix, probabilities_from_matrix
