@@ -547,8 +547,8 @@ def _run_tournament(_ratings, _strengths, n_sims: int, seed: int, cache_key: str
 
     # No Streamlit Cloud o re-deploy reexecuta o script mas pode manter módulos
     # importados em cache no ``sys.modules`` — se a versão carregada for
-    # anterior (sem ``ROUND_BY_SIZE``/``simulate_once_detailed``), recarrega.
-    if not hasattr(sim, "simulate_once_detailed"):
+    # anterior ao chaveamento oficial (sem ``R32_SLOTS``), recarrega.
+    if not hasattr(sim, "R32_SLOTS"):
         import importlib
         sim = importlib.reload(sim)
 
@@ -674,7 +674,7 @@ def _tab_simulacao(ratings, strengths, fonte):
         st.info("Ajuste os parâmetros e clique em **Simular torneio**.")
         return
 
-    agg = _run_tournament(ratings, strengths, int(n_sims), int(seed), fonte)
+    agg = _run_tournament(ratings, strengths, int(n_sims), int(seed), fonte + "|v2")
     n = agg["n"]
 
     # ----- 🏆 Campeã ---------------------------------------------------------
