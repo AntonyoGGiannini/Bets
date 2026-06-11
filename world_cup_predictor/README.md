@@ -247,11 +247,30 @@ from data_loader import load_odds_footballdata
 odds = load_odds_footballdata("data/raw/odds_wc2022.csv")
 ```
 
-### Fonte 3 — Odds ao vivo: The Odds API
+### Fonte 3 — Odds ao vivo: The Odds API (aba "📡 Odds das Casas")
 
-Para as partidas da Copa 2026 em tempo real (free tier: 500 req/mês):
-obtenha uma chave em [the-odds-api.com](https://the-odds-api.com) e use
-`requests` para buscar os mercados antes de cada rodada.
+A aba **📡 Odds das Casas** do app busca automaticamente as odds 1X2 e
+Over/Under 2.5 dos jogos da Copa, calcula a **média entre as casas**
+(Bet365, Pinnacle, Betfair, etc.) e compara com o modelo (edge).
+
+1. Crie uma chave grátis em [the-odds-api.com](https://the-odds-api.com)
+   (free tier: 500 créditos/mês).
+2. Configure a chave:
+   - **Local:** crie `.streamlit/secrets.toml` na raiz do projeto com:
+
+     ```toml
+     ODDS_API_KEY = "sua-chave-aqui"
+     ```
+
+   - **Streamlit Cloud:** adicione `ODDS_API_KEY` em *Settings → Secrets*.
+   - Ou simplesmente cole a chave no campo da própria aba.
+
+Notas de consumo: cada consulta (2 mercados × 3 regiões) custa alguns
+créditos; o app cacheia o resultado por **15 minutos** — use o botão
+"🔄 Atualizar agora" com parcimônia. Sem chave, a aba tem um **modo
+demonstração** com dados de exemplo (não gasta créditos). A lógica de
+busca/agregação fica em `src/live_odds.py` (mapeamento de nomes de
+seleções incluído).
 
 ### Diagnóstico do CSV carregado
 

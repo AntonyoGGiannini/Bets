@@ -1,0 +1,6 @@
+# Segredos do Streamlit (chave da The Odds API etc.)
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
