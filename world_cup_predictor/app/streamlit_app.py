@@ -92,7 +92,7 @@ def ensure_real_csv() -> bool:
 # Cache: carrega e treina modelo UMA vez
 # ---------------------------------------------------------------------------
 @st.cache_data(show_spinner="Carregando histórico e treinando modelo...")
-def load_model():
+def load_model(excluir_amistosos: bool = False):
     from elo_model import build_elo_history
     from feature_engineering import build_team_strengths, create_elo_diff
 
@@ -107,6 +107,9 @@ def load_model():
         matches = data_loader.generate_mock_matches(n_matches=600)
         matches_all = matches
         fonte = "mock"
+
+    if excluir_amistosos:
+        matches = matches[matches["competicao"] != "Friendly"].reset_index(drop=True)
 
     ratings = build_elo_history(matches)
     m_elo  = create_elo_diff(matches, ratings)
@@ -134,7 +137,14 @@ def main():
     st.set_page_config(page_title="World Cup 2026 Predictor", page_icon="⚽", layout="wide")
     st.title("⚽ World Cup 2026 Predictor")
 
-    ratings, strengths, matches, matches_all, fonte = load_model()
+    excluir_amistosos = st.toggle(
+        "🚫 Desconsiderar amistosos",
+        value=False,
+        key="excl_amistosos",
+        help="Recalcula Elo, forma e todas as previsões usando apenas "
+             "jogos oficiais (Copa, Eliminatórias, Continentais, Nations League).",
+    )
+    ratings, strengths, matches, matches_all, fonte = load_model(excluir_amistosos)
     teams = _available(strengths, ratings)
 
     # Barra de status do dataset
@@ -144,6 +154,7 @@ def main():
         f"**Fonte:** {'dados reais — ' + f'{len(matches):,}' + ' partidas (Copa 2026 teams)' if fonte == 'real' else 'dados mock'}  ·  "
         f"**Último jogo no dataset:** {last.time_a} {int(last.gols_time_a)}×{int(last.gols_time_b)} {last.time_b} "
         f"em {last_date} ({last.competicao})"
+        + ("  ·  **amistosos desconsiderados**" if excluir_amistosos else "")
     )
     if fonte == "mock":
         err = st.session_state.get("_download_error")
